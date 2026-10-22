@@ -14,13 +14,20 @@ describe('T-03b weekly streaks', () => {
     await t.person('k-amina');
   });
 
-  const list = (n: number, key = `w${n}`) => t.act('k-amina', 'need.shopping_list', week(n), key);
+  const HOUR = 3_600_000;
+  // Each list is read an hour after it is made, unless a test says it arrives late.
+  const list = (n: number, key = `w${n}`, readAfter = HOUR) => {
+    t.setNow(new Date(Date.parse(week(n)) + readAfter).toISOString());
+    return t.act('k-amina', 'need.shopping_list', week(n), key);
+  };
   const streak = async () => ((await t.call('GET', '/v1/people/k-amina/quests')).json.data as any[]).find((q) => q.quest === STREAK);
 
   it('pays +20 after four weeks running', async () => {
     for (const n of [10, 11, 12]) expect(streakAwards(await list(n))).toEqual([]);
     expect(streakAwards(await list(13))).toEqual([{ quest: STREAK, points: 20, step: '4 weeks' }]);
-    expect(await streak()).toMatchObject({ progress: 0, best: 4, target: 4 }); // weeks 10 to 13 are long gone
+    expect(await streak()).toMatchObject({ progress: 4, best: 4, target: 12 }); // read in week 13
+    t.setNow(null);
+    expect(await streak()).toMatchObject({ progress: 0, best: 4, target: 4 }); // today, weeks 10 to 13 are long gone
   });
 
   it('shows the run still going when the last week said is recent', async () => {
@@ -55,7 +62,7 @@ describe('T-03b weekly streaks', () => {
   it('pays each milestone once per run, even when a late entry joins two runs', async () => {
     for (const n of [10, 11, 12, 13]) await list(n); // +20 at week 13
     for (const n of [17, 18, 19, 20]) await list(n); // a second run: +20 again at week 20
-    const late = await list(15, 'late'); // week 15 joins both runs into one of 9 weeks
+    const late = await list(15, 'late', 13 * 24 * HOUR); // read 13 days late, it still counts: week 15 joins both runs into one of 9 weeks
     expect(streakAwards(late)).toEqual([]);
     expect(await streak()).toMatchObject({ progress: 9, best: 9 });
   });
@@ -74,8 +81,17 @@ describe('T-03b weekly streaks', () => {
   it('pays the next milestone when a late week joins two runs into one', async () => {
     for (let n = 1; n <= 5; n++) await list(n);      // a run of 5: +20
     for (let n = 8; n <= 14; n++) await list(n);     // weeks 6 and 7 missed: a new run of 7, +20
-    const late = await list(7, 'late');              // joins them: 13 weeks, so +50 now; 4 weeks is not paid again
+    const late = await list(7, 'late', 13 * 24 * HOUR); // read 13 days late, joins them: 13 weeks, so +50 now; 4 weeks is not paid again
     expect(streakAwards(late)).toEqual([{ quest: STREAK, points: 50, step: '12 weeks' }]);
+  });
+
+  it('does not count an entry read more than 14 days after it happened, but still pays its own quest', async () => {
+    for (const n of [16, 17, 18]) await list(n);
+    const old = await list(15, 'old', 15 * 24 * HOUR);
+    expect(old.awards).toEqual([{ quest: 'need.shopping_list', points: 10 }]);
+    expect(old.notAwarded).toEqual([{ quest: STREAK, reason: 'too_late' }]);
+    expect(await streak()).toMatchObject({ best: 3 });
+    expect(streakAwards(await list(19))).toEqual([{ quest: STREAK, points: 20, step: '4 weeks' }]); // 16 to 19
   });
 
   it('pays +50 at twelve weeks', async () => {

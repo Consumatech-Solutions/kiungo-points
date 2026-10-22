@@ -16,9 +16,10 @@ export interface Deps {
   identity: IdentityPlug;
   adminKey: string;
   limit: (key: string) => Promise<boolean>; // false once a carriage (or an address) has used up its calls for now
+  now?: () => Date; // the clock; tests set it
 }
 
-export function createApp({ db, identity, adminKey, limit }: Deps) {
+export function createApp({ db, identity, adminKey, limit, now = () => new Date() }: Deps) {
   const app = new Hono();
 
   app.onError((err, c) => {
@@ -109,7 +110,7 @@ export function createApp({ db, identity, adminKey, limit }: Deps) {
     if (m instanceof Response) return m;
     const person = await identity.lookup(m.id);
     if (!person) return c.json(error('unknown_person', 'No person with this Kiungo ID.'), 404);
-    return c.json({ data: await questProgress(db, m.id, person.timezone) });
+    return c.json({ data: await questProgress(db, m.id, person.timezone, now()) });
   });
 
   app.get('/v1/people/:kiungoId/awards', async (c) => {
@@ -154,7 +155,7 @@ export function createApp({ db, identity, adminKey, limit }: Deps) {
   });
 
   // ---- Stand-in rails (ADR-003). Removed in T-12. ----
-  standinRoutes(app, { db, identity, admin, carriageOf });
+  standinRoutes(app, { db, identity, admin, carriageOf, now });
 
   return app;
 }
