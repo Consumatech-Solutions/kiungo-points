@@ -22,3 +22,4 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Milestone** | A run length that pays: 4, 12 and 26 weeks | badge |
 | **Evidence** | What a quest needs to see before it pays, such as a sale code. A reference, never the thing itself | proof of purchase |
 | **Never earns** | Vouching, paying money and buying anything: never paid, whatever quests exist. Carriages name these kinds `vouch.…`, `payment.…`, `purchase.…` | |
+| **Reader** | A carriage (or Kiungo's points system itself, `kiungo-points`) that a member allows to read something of theirs | client, consumer |

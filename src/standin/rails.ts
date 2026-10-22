@@ -19,17 +19,10 @@ export function standinIdentity(db: Db): IdentityPlug {
   };
 }
 
-export async function sha256(text: string): Promise<string> {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** The carriage a key belongs to, and what it may write; null for an unknown key. */
-export async function carriageFor(db: Db, key: string): Promise<{ name: string; may_write: string[] } | null> {
-  const [c] = await db.query<{ name: string; may_write: string[] }>(
-    'SELECT name, may_write FROM standin_carriages WHERE key_hash = $1', [await sha256(key)],
-  );
-  return c ?? null;
+/** What kinds of activity a carriage may write to the stand-in rail. */
+export async function mayWrite(db: Db, carriage: string): Promise<string[]> {
+  const [c] = await db.query<{ may_write: string[] }>('SELECT may_write FROM standin_carriages WHERE name = $1', [carriage]);
+  return c?.may_write ?? [];
 }
 
 /**

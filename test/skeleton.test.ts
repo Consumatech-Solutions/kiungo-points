@@ -10,7 +10,7 @@ describe('T-01 walking skeleton', () => {
   beforeEach(async () => {
     t = await setup();
     await t.call('POST', '/standin/people',
-      { kiungoId: 'k-amina', trust: 'joined', timezone: 'Africa/Kinshasa', allows: ['kiungo-points'] }, ADMIN);
+      { kiungoId: 'k-amina', trust: 'joined', timezone: 'Africa/Kinshasa', allows: ['kiungo-points', 'my.kiungo.africa', 'kiungo.test'] }, ADMIN);
     await t.call('POST', '/standin/people',
       { kiungoId: 'k-kofi', trust: 'joined', timezone: 'Africa/Accra', allows: [] }, ADMIN);
   });
@@ -45,9 +45,7 @@ describe('T-01 walking skeleton', () => {
 
   it('pays nothing, and keeps no reference, when the person has not allowed Kiungo', async () => {
     const res = await t.call('POST', '/standin/activity', { kiungoId: 'k-kofi', kind: PHONE, occurredAt: at, key: 'p1' }, CARRIAGE_KEY);
-    expect(res.json.data.awards).toEqual([]);
-    expect(res.json.data.notAwarded).toEqual([{ quest: null, reason: 'no_permission' }]);
-    expect(res.json.data.total).toBe(0);
+    expect(res.json.data).toEqual({ entry: 'my.kiungo.africa:p1' }); // Kofi lets no carriage see his points
     expect(await t.db.query('SELECT 1 FROM entries_read WHERE kiungo_id = $1', ['k-kofi'])).toEqual([]);
   });
 

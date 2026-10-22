@@ -4,5 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "SET_IN_DASHBOARD" }]
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "SET_IN_DASHBOARD" }],
+  // Calls per carriage key per minute, counted at each Cloudflare location. Created on the first deploy.
+  "ratelimits": [{ "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 1000, "period": 60 } }]
 }
