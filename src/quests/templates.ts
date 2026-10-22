@@ -14,7 +14,7 @@ const common = {
   trustNeeded: z.enum(['joined', 'vouched', 'verified']),
   building: z.boolean().default(false),
   evidence: z.enum(['sale_code']).optional(), // photo evidence needs a confirmation flow from the carriages (follow-up)
-  unit: z.string().regex(/^[a-z0-9_-]{1,64}$/).optional(), // a unit's own quest
+  unit: UNIT.optional(), // a unit's own quest
 };
 
 const step = z.object({
@@ -82,6 +82,7 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
   const watched = 'watches' in d ? d.watches as string[] : 'steps' in d ? (d.steps as { kind: string }[]).map((s) => s.kind) : [];
   const unpaid = watched.find((k) => NEVER_EARNS.test(k));
   if (unpaid) return { reason: `${unpaid} never earns points: vouching, paying and buying are never rewarded.` };
+  if (d.unit && d.questLine !== 'local') return { reason: 'A unit quest is a local quest (quest line local).' };
   if (d.questLine === 'local' || d.unit) {
     // activities.md rule 7: no single local activity worth more than 50 points
     if (d.template === 'streak') return { reason: 'Streaks are core quests; a local quest can\'t be one.' };

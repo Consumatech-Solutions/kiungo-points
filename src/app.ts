@@ -129,7 +129,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
       return c.json(error('not_allowed', `Only a member of ${unit}, through a carriage they allow, can do this.`), 403);
     }
     if (!(await standing(db, identity, id.data)).levels.some((l) => l.level === level)) {
-      return c.json(error('not_allowed', `This needs a ${level} of ${unit}.`), 403);
+      return c.json(error('not_allowed', `This needs a member of ${unit} at ${level} or above.`), 403);
     }
     return id.data;
   };

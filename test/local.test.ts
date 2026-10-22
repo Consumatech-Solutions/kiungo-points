@@ -67,6 +67,29 @@ describe('T-09 local quests', () => {
   it('keeps a unit to its own quests: ids start with the unit, and core quests stay core', async () => {
     expect((await draft({ ...peppers(), id: 'kisenso.peppers' })).status).toBe(400);
     expect((await draft({ ...peppers(), id: 'need.shopping_list' })).status).toBe(400);
+    // a unit named like a core quest line still can't draft over a core quest
+    await grow('k-need', ['need'], 'Fruit');
+    const over = await t.call('POST', '/v1/units/need/quests', {
+      proposedBy: 'k-need', id: 'need.shopping_list', title: 'Share your shopping list', template: 'repeat',
+      watches: ['need.shopping_list'], target: 1, period: 'weekly', limit: 2, points: 10, trustNeeded: 'joined',
+    });
+    expect(over.status).toBe(400);
+    expect(over.json.error.message).toMatch(/keeps the quest line, its unit/);
+  });
+
+  it('lets a Seedkeeper change only the quests of their own unit', async () => {
+    await grow('k-mzee', ['matete'], 'Seedkeeper');
+    for (const id of ['kisenso.peppers', 'need.shopping_list']) {
+      expect((await t.call('POST', `/v1/units/matete/quests/${id}/live`, { by: 'k-mzee' })).status).toBe(404);
+    }
+  });
+
+  it('refuses a unit quest outside the local quest line, even from admin', async () => {
+    const res = await t.call('POST', '/v1/quests', {
+      id: 'matete.lists', title: 'Lists', questLine: 'needs', unit: 'matete', template: 'repeat', watches: ['need.shopping_list'],
+      target: 1, period: 'weekly', limit: 1, points: 10, trustNeeded: 'joined',
+    }, ADMIN);
+    expect(res.status).toBe(400);
   });
 
   it('pays only Matete\'s members', async () => {
