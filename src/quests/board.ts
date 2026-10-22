@@ -6,7 +6,7 @@ export async function liveQuests(db: Db) {
   return db.query(
     `SELECT DISTINCT ON (v.quest_id) v.quest_id AS quest, v.title, q.quest_line AS "questLine", q.template,
             v.version, v.watches, v.target, v.period, v.period_limit AS "limit", v.each_item AS "eachItem",
-            v.points, v.steps, v.trust_needed AS "trustNeeded"
+            v.points, v.steps, v.trust_needed AS "trustNeeded", v.evidence
        FROM quest_versions v JOIN quests q ON q.id = v.quest_id
       WHERE q.status = 'live' AND v.valid_from <= now()
       ORDER BY v.quest_id, v.version DESC`,
@@ -32,11 +32,11 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
       return { reason: 'A new version keeps the quest line and whether it counts as building. Draft a new quest to change them.' };
     }
     const [row] = await tx.query<{ version: number }>(
-      `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed)
-       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10 FROM quest_versions WHERE quest_id = $1
+      `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence)
+       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 FROM quest_versions WHERE quest_id = $1
        RETURNING version`,
       [d.id, d.title, v.watches, v.target, v.period, v.period_limit, v.each_item, v.points,
-        v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded],
+        v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded, d.evidence ?? null],
     );
     return { quest: d.id, version: row!.version, status: q!.status };
   });

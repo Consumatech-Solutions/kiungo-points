@@ -1,7 +1,7 @@
 import type { Db } from '../db';
 import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Trust } from '../plugs';
 import { periodKey, periodOrdinal, type Period } from './periods';
-import { decide, readStreak, type Progress, type Rule } from './rules';
+import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rules';
 
 export interface Award { quest: string; points: number; step?: string }
 export interface NotAwarded { quest: string | null; reason: string }
@@ -10,6 +10,7 @@ export interface EntryResult { entry: string; awards: Award[]; notAwarded: NotAw
 interface LiveQuest {
   quest_id: string; version: number; template: string; target: number; period: Period; period_limit: number | null;
   each_item: string | null; points: number | null; steps: Rule['steps']; trust_needed: Trust; quest_line: string;
+  evidence: string | null;
 }
 
 /**
@@ -37,11 +38,17 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     );
     if (fresh.length === 0) return earned(tx, entry.entryId); // already read: same answer again
 
+    if (NEVER_EARNS.test(entry.kind)) {
+      await tx.query("UPDATE entries_read SET outcome = 'never_earns' WHERE entry_id = $1", [entry.entryId]);
+      result.notAwarded.push({ quest: null, reason: 'never_earns' });
+      return result;
+    }
+
     // The version in force when the entry happened, then only those that watch its kind.
     const quests = await tx.query<LiveQuest>(
       `SELECT * FROM (
          SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
-                v.each_item, v.points, v.steps, v.trust_needed, q.quest_line
+                v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line
            FROM quest_versions v JOIN quests q ON q.id = v.quest_id
           WHERE q.status = 'live' AND v.valid_from <= $2
           ORDER BY v.quest_id, v.version DESC) inforce
@@ -68,6 +75,10 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         continue;
       }
       if (missingItem && q.template !== 'repeat') continue;
+      if (q.evidence && !entry.evidence) {
+        await notPaid(q, 'missing_evidence');
+        continue;
+      }
       if (q.each_item === 'ever') {
         // "Once per item, ever" reads other periods' rows, so lock the whole quest for this member.
         await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.quest_id]);
@@ -118,6 +129,8 @@ export async function earned(db: Db, entryId: string): Promise<EntryResult> {
     'SELECT quest_id, points, step, reason FROM awards WHERE entry_id = $1 ORDER BY id', [entryId],
   );
   const result: EntryResult = { entry: entryId, awards: [], notAwarded: [] };
+  const [read] = await db.query<{ outcome: string | null }>('SELECT outcome FROM entries_read WHERE entry_id = $1', [entryId]);
+  if (read?.outcome) result.notAwarded.push({ quest: null, reason: read.outcome });
   for (const r of rows) {
     if (r.points === 0 && r.reason) result.notAwarded.push({ quest: r.quest_id, reason: r.reason });
     else result.awards.push({ quest: r.quest_id, points: r.points, ...(r.step ? { step: r.step } : {}) });
