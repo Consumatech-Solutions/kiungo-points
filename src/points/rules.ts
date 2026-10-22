@@ -8,8 +8,8 @@ export interface Rule {
   limit: number | null;
   eachItem: string | null;
   points: number | null;
-  steps: // Steps: the stages. Streak: the milestones.
-    { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[] | { weeks: number; points: number }[] | null;
+  // Steps: the stages. Streak: the milestones.
+  steps: { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[] | { weeks: number; points: number }[] | null;
 }
 
 // One quest's progress in one period. `counted` holds items paid, sections collected or steps reached.
@@ -92,7 +92,7 @@ export function readStreak(counted: string[]) {
   return { weeks, paid, runs: runs(weeks) };
 }
 
-/** Splits sorted weeks into runs: weeks at most two apart, so one missed week doesn't break a run. */
+// Splits sorted weeks into runs: weeks at most two apart, so one missed week doesn't break a run.
 function runs(weeks: number[]): number[][] {
   const out: number[][] = [];
   for (const w of weeks) {
@@ -115,7 +115,7 @@ function streak(rule: Rule, p: Progress, weekNo: number): Decision {
   for (const m of due) counted.push(`paid:${weekNo}:${m.weeks}`);
   const top = due.at(-1);
   return {
-    progress: { count: run.length, completions: p.completions + due.length, counted },
+    progress: { count: p.count, completions: p.completions + due.length, counted }, // runs are read from `counted`
     award: top ? { points: due.reduce((sum, m) => sum + m.points, 0), step: `${top.weeks} weeks` } : null,
     reason: null,
   };

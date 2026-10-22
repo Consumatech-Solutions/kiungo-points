@@ -42,6 +42,12 @@ describe('periodOrdinal', () => {
     const b = periodOrdinal('2021-01-04T12:00:00Z', 'weekly', 'UTC'); // 2021-W01
     expect(b - a).toBe(1);
   });
+  it('ISO week 53 of 2026 and week 1 of 2027 are consecutive', () => {
+    const a = periodOrdinal('2026-12-30T12:00:00Z', 'weekly', 'Africa/Kinshasa'); // 2026-W53
+    const b = periodOrdinal('2027-01-06T12:00:00Z', 'weekly', 'Africa/Kinshasa'); // 2027-W01
+    expect(periodKey('2026-12-30T12:00:00Z', 'weekly', 'Africa/Kinshasa')).toBe('2026-W53');
+    expect(b - a).toBe(1);
+  });
   it('consecutive months differ by 1 across a year boundary', () => {
     const a = periodOrdinal('2026-12-15T12:00:00Z', 'monthly', 'UTC');
     const b = periodOrdinal('2027-01-15T12:00:00Z', 'monthly', 'UTC');

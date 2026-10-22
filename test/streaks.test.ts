@@ -60,6 +60,24 @@ describe('T-03b weekly streaks', () => {
     expect(await streak()).toMatchObject({ progress: 9, best: 9 });
   });
 
+  it('gives a redelivered streak entry the same answer', async () => {
+    for (const n of [10, 11, 12]) await list(n);
+    const first = await list(13);
+    expect(await list(13)).toEqual(first);
+  });
+
+  it('does not count a survey refused for a missing reference', async () => {
+    await t.act('k-amina', 'need.survey', week(20), 'v-no-item');
+    expect(await streak()).toBeUndefined();
+  });
+
+  it('pays the next milestone when a late week joins two runs into one', async () => {
+    for (let n = 1; n <= 5; n++) await list(n);      // a run of 5: +20
+    for (let n = 8; n <= 14; n++) await list(n);     // weeks 6 and 7 missed: a new run of 7, +20
+    const late = await list(7, 'late');              // joins them: 13 weeks, so +50 now; 4 weeks is not paid again
+    expect(streakAwards(late)).toEqual([{ quest: STREAK, points: 50, step: '12 weeks' }]);
+  });
+
   it('pays +50 at twelve weeks', async () => {
     let last: any;
     for (let n = 2; n <= 13; n++) last = await list(n);
