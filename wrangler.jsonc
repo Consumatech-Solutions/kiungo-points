@@ -1,0 +1,8 @@
+{
+  // Deployed by the founder only. The Hyperdrive id and the admin key are set in the Cloudflare dashboard.
+  "name": "kiungo-points",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "SET_IN_DASHBOARD" }]
+}
