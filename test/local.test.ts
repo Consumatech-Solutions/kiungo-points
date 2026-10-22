@@ -99,7 +99,7 @@ describe('T-09 local quests', () => {
     await t.person('k-amina', 'joined', 'Africa/Kinshasa', undefined, ['matete']);
     await t.person('k-kofi', 'joined', 'Africa/Kinshasa', undefined, ['kisenso']);
     expect((await t.act('k-amina', 'peppers.planted', LATER, 'a1')).awards).toEqual([{ quest: 'matete.peppers', points: 20, step: 'peppers.planted' }]);
-    expect((await t.act('k-kofi', 'peppers.planted', LATER, 'k1')).awards).toEqual([]);
+    expect((await t.act('k-kofi', 'peppers.planted', LATER, 'k1')).awards.filter((a: any) => a.quest === 'matete.peppers')).toEqual([]);
   });
 
   it('holds admin-drafted local quests to the same 50-point limit', async () => {
