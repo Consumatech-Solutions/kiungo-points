@@ -65,6 +65,31 @@ describe('T-05 levels', () => {
     expect(await standing('k-amina')).toMatchObject({ total: 90, counting: 26 }); // 20 + 6: local ≤ a quarter of 26
   });
 
+  it('counts up to 400 when both caps hold: 100 core, 200 of the invites, 100 of the local points', async () => {
+    await t.call('POST', '/v1/quests', {
+      id: 'local.tomato', title: 'The tomato challenge', questLine: 'local', template: 'steps', trustNeeded: 'joined',
+      steps: [{ kind: 'tomato.planted', points: 20 }, { kind: 'tomato.checked_in', points: 50 }, { kind: 'tomato.harvested', points: 50 }],
+    }, ADMIN);
+    await t.call('POST', '/v1/quests/local.tomato/live', undefined, ADMIN);
+    await t.person('k-kofi', 'vouched');
+    for (const [k, extra] of [['offer.saved', {}], ['share.card_first', {}], ['picture.look', {}], ['business.page_completed', { item: 'page-1' }]] as const) {
+      await t.act('k-kofi', k, AT, k, extra);
+    } // 20 + 20 + 10 + 50 = 100 core
+    for (let i = 0; i < 10; i++) await t.act('k-kofi', 'invite.shop_live', AT, `shop${i}`, { item: `shop-${i}` }); // 250 invite
+    for (const k of ['tomato.planted', 'tomato.checked_in', 'tomato.harvested']) await t.act('k-kofi', k, '2099-01-01T09:00:00Z', k); // 120 local
+    expect(await standing('k-kofi')).toMatchObject({ total: 470, counting: 400, level: 'Root' });
+  });
+
+  it('keeps climbing from a level already reached, even after trust drops', async () => {
+    await t.person('k-kofi', 'vouched');
+    await franchises('k-kofi', 2);
+    expect((await standing('k-kofi')).level).toBe('Root');
+    await t.person('k-kofi', 'joined');
+    for (let i = 0; i < 22; i++) await t.act('k-kofi', 'business.course_completed', AT, `c${i}`, { item: `course-${i}` }); // joined may: 400 + 1,100
+    const built = await t.act('k-kofi', 'build.translation_approved', AT, 'tr1', { item: 'piece-1' });
+    expect(built.level).toBe('Fruit');
+  });
+
   it('never lowers a level, and shows the date each was first reached', async () => {
     await t.person('k-kofi', 'vouched');
     await franchises('k-kofi', 2);

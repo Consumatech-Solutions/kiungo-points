@@ -26,15 +26,9 @@ export interface Standing {
  * and local points only up to a third of the rest (at most a quarter).
  */
 export function countingPoints(core: number, invite: number, local: number): number {
-  let inv = Math.max(0, Math.min(invite, core));
-  let loc = 0;
-  for (let i = 0; i < 10; i++) { // each cap raises the other's ceiling; this settles in a few rounds
-    const nextLoc = Math.max(0, Math.min(local, Math.floor((core + inv) / 3)));
-    const nextInv = Math.max(0, Math.min(invite, core + nextLoc));
-    if (nextLoc === loc && nextInv === inv) break;
-    loc = nextLoc;
-    inv = nextInv;
-  }
+  // Both caps at once: local ≤ (core + invites) / 3 and invites ≤ core + local, so local can never pass core.
+  const loc = Math.max(0, Math.min(local, core, Math.floor((core + Math.max(0, invite)) / 3)));
+  const inv = Math.max(0, Math.min(invite, core + loc));
   return core + inv + loc;
 }
 
@@ -47,9 +41,10 @@ export async function standing(db: Db, identity: IdentityPlug, kiungoId: string)
             COALESCE(SUM(a.points) FILTER (WHERE a.quest_line = 'local'), 0) AS local,
             (SELECT COUNT(*)::int FROM (SELECT quest_line FROM awards WHERE kiungo_id = $1
                                          GROUP BY quest_line HAVING SUM(points) > 0) l) AS lines,
-            COALESCE(BOOL_OR(q.building OR a.quest_line = 'local') FILTER (WHERE a.points > 0), false) AS building
-       FROM awards a JOIN quests q ON q.id = a.quest_id
-      WHERE a.kiungo_id = $1`,
+            EXISTS (SELECT 1 FROM awards b JOIN quests q ON q.id = b.quest_id
+                     WHERE b.kiungo_id = $1 AND (q.building OR b.quest_line = 'local')
+                     GROUP BY b.quest_id HAVING SUM(b.points) > 0) AS building
+       FROM awards a WHERE a.kiungo_id = $1`,
     [kiungoId],
   );
   const total = Number(sums!.total);
@@ -61,17 +56,22 @@ export async function standing(db: Db, identity: IdentityPlug, kiungoId: string)
     ...('building' in l && !sums!.building ? ['a building activity'] : []),
     ...('questLines' in l && sums!.lines < l.questLines ? [`points from ${l.questLines} quest lines`] : []),
   ];
-  let earnedNow = 0; // how many levels, in order, are met today
-  while (earnedNow < LEVELS.length && counting >= LEVELS[earnedNow]!.from && missing(LEVELS[earnedNow]!).length === 0) earnedNow++;
 
-  for (const l of LEVELS.slice(0, earnedNow)) {
-    await db.query(
-      'INSERT INTO levels_reached (kiungo_id, level) VALUES ($1, $2) ON CONFLICT DO NOTHING', [kiungoId, l.level],
-    );
-  }
-  const reached = await db.query<{ level: string; reached_at: Date | string }>(
+  const read = () => db.query<{ level: string; reached_at: Date | string }>(
     'SELECT level, reached_at FROM levels_reached WHERE kiungo_id = $1', [kiungoId],
   );
+  let reached = await read();
+  // Levels already reached stay met, so the climb carries on from there even if trust has dropped.
+  const had = LEVELS.filter((l) => reached.some((r) => r.level === l.level)).length;
+  let now = had;
+  while (now < LEVELS.length && counting >= LEVELS[now]!.from && missing(LEVELS[now]!).length === 0) now++;
+  if (now > had) {
+    await db.query(
+      'INSERT INTO levels_reached (kiungo_id, level) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING',
+      [kiungoId, LEVELS.slice(had, now).map((l) => l.level)],
+    );
+    reached = await read();
+  }
   const levels = LEVELS.filter((l) => reached.some((r) => r.level === l.level))
     .map((l) => ({ level: l.level, reachedAt: new Date(reached.find((r) => r.level === l.level)!.reached_at).toISOString() }));
   const nextLevel = LEVELS[levels.length];
