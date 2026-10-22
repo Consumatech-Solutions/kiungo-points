@@ -1,7 +1,7 @@
 import type { Db } from '../db';
 import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Trust } from '../plugs';
-import { periodKey, type Period } from './periods';
-import { decide, type Progress, type Rule } from './rules';
+import { periodKey, periodOrdinal, type Period } from './periods';
+import { decide, readStreak, type Progress, type Rule } from './rules';
 
 export interface Award { quest: string; points: number; step?: string }
 export interface NotAwarded { quest: string | null; reason: string }
@@ -37,14 +37,13 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     );
     if (fresh.length === 0) return earned(tx, entry.entryId); // already read: same answer again
 
-    // shortcut: Streak progress arrives in T-03b.
     // The version in force when the entry happened, then only those that watch its kind.
     const quests = await tx.query<LiveQuest>(
       `SELECT * FROM (
          SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
                 v.each_item, v.points, v.steps, v.trust_needed, q.quest_line
            FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-          WHERE q.status = 'live' AND q.template <> 'streak' AND v.valid_from <= $2
+          WHERE q.status = 'live' AND v.valid_from <= $2
           ORDER BY v.quest_id, v.version DESC) inforce
         WHERE $1 = ANY(inforce.watches)
         ORDER BY quest_id`,
@@ -68,7 +67,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         await notPaid(q, `needs_${q.trust_needed}`);
         continue;
       }
-      if (missingItem && q.template === 'collect') continue;
+      if (missingItem && q.template !== 'repeat') continue;
       if (q.each_item === 'ever') {
         // "Once per item, ever" reads other periods' rows, so lock the whole quest for this member.
         await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.quest_id]);
@@ -92,7 +91,8 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
       const d = decide(
         { template: q.template, period: q.period, target: q.target, limit: q.period_limit, eachItem: q.each_item, points: q.points, steps: q.steps },
         row!,
-        { kind: entry.kind, item: entry.item, itemPaidBefore, week: periodKey(entry.occurredAt, 'weekly', person.timezone) },
+        { kind: entry.kind, item: entry.item, itemPaidBefore, week: periodKey(entry.occurredAt, 'weekly', person.timezone),
+          weekNo: periodOrdinal(entry.occurredAt, 'weekly', person.timezone) },
       );
       if (d.progress !== row) {
         await tx.query(
@@ -143,6 +143,14 @@ export async function questProgress(db: Db, kiungoId: string, timezone: string, 
   );
   return rows.map((r) => {
     if (r.template === 'collect') return { quest: r.quest, period: r.period, progress: r.counted.length, target: r.target };
+    if (r.template === 'streak') {
+      const { weeks, runs } = readStreak(r.counted);
+      // The run is broken once two weeks have passed with nothing said.
+      const thisWeek = periodOrdinal(now.toISOString(), 'weekly', timezone);
+      const current = weeks.length && thisWeek - weeks.at(-1)! <= 2 ? runs.at(-1)!.length : 0;
+      const next = (r.steps as unknown as { weeks: number }[]).find((m) => m.weeks > current)?.weeks ?? null;
+      return { quest: r.quest, period: r.period, progress: current, best: Math.max(0, ...runs.map((run) => run.length)), target: next };
+    }
     if (r.template === 'steps') {
       const reached = r.steps!.filter((s) => r.counted.some((c) => c === s.kind || c.startsWith(`${s.kind}@`))).length;
       return { quest: r.quest, period: r.period, progress: reached, target: r.steps!.length };
