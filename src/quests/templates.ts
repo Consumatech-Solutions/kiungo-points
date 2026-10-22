@@ -67,6 +67,7 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
       if (unique(d.watches)) return { reason: `${unique(d.watches)} is watched twice.` };
       if (d.period === 'once' && d.limit) return { reason: 'A once-only quest has no limit per period.' };
       if (d.eachItem === 'per_period' && d.period === 'once') return { reason: 'Once per item per period needs a repeating period.' };
+      if (d.eachItem && d.target > 1) return { reason: 'A quest paid once per item has a target of 1.' };
       return { version: {
         watches: d.watches, target: d.target, period: d.period,
         // a repeating quest with no limit pays once per period, unless each item pays on its own
@@ -84,6 +85,8 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
     case 'steps': {
       const kinds = d.steps.map((s) => s.kind);
       if (unique(kinds)) return { reason: `The step ${unique(kinds)} appears twice.` };
+      const repeated = d.steps.find((s) => s.upTo > 1 && s.period !== 'weekly');
+      if (repeated) return { reason: `The step ${repeated.kind} can repeat only as a weekly step.` };
       return { version: { watches: kinds, target: d.steps.length, period: 'once', period_limit: null, each_item: null, points: null, steps: d.steps } };
     }
     case 'streak': {

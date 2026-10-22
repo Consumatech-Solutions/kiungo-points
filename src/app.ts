@@ -59,7 +59,9 @@ export function createApp({ db, identity, adminKey }: Deps) {
   app.get('/v1/people/:kiungoId/quests', async (c) => {
     const id = KIUNGO_ID.safeParse(c.req.param('kiungoId'));
     if (!id.success) return c.json(error('invalid_kiungo_id', 'Use letters, digits, - and _, up to 64.'), 400);
-    return c.json({ data: await questProgress(db, id.data) });
+    const person = await identity.lookup(id.data);
+    if (!person) return c.json(error('unknown_person', 'No person with this Kiungo ID.'), 404);
+    return c.json({ data: await questProgress(db, id.data, person.timezone) });
   });
 
   app.get('/v1/people/:kiungoId/awards', async (c) => {
@@ -117,8 +119,8 @@ export function createApp({ db, identity, adminKey }: Deps) {
       kind: z.string().min(1),
       occurredAt: z.string().datetime({ offset: true }),
       key: z.string().min(1).max(200),
-      item: z.string().min(1).max(200).optional(),
-      evidence: z.string().min(1).max(200).optional(),
+      item: z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/, 'An item is a reference such as survey-12, never a name or number.').optional(),
+      evidence: z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/, 'Evidence is a reference such as a sale code.').optional(),
     }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json(error('invalid_request', body.error.message), 400);
     if (!carriage.may_write.includes(body.data.kind)) {

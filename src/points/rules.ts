@@ -11,23 +11,21 @@ export interface Rule {
   steps: { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[] | null;
 }
 
-/** One quest's progress in one period. `counted` holds items paid, sections collected or steps reached. */
+// One quest's progress in one period. `counted` holds items paid, sections collected or steps reached.
 export interface Progress { count: number; completions: number; counted: string[] }
 
 export interface Decision {
   progress: Progress;
   award: { points: number; step?: string } | null;
-  /** Why the quest didn't pay. Null with no award means the entry only moved progress. */
+  // Why the quest didn't pay. Null with no award means the entry only moved progress.
   reason: string | null;
 }
 
 export interface Seen {
   kind: string;
   item?: string;
-  /** For `eachItem: 'ever'`: whether this item was already paid in an earlier period. */
-  itemPaidBefore: boolean;
-  /** The week the entry falls in, for weekly steps. */
-  week: string;
+  itemPaidBefore: boolean; // for eachItem 'ever': already paid in an earlier period
+  week: string; // the week the entry falls in, for weekly steps
 }
 
 const LIMIT_REASON: Record<string, string> = {
@@ -59,7 +57,7 @@ export function decide(rule: Rule, p: Progress, seen: Seen): Decision {
     const mine = marks(step.kind);
     if (mine.length >= step.upTo) return stay('already_done');
     const mark = step.period === 'weekly' ? `${step.kind}@${seen.week}` : step.kind;
-    if (mine.includes(mark)) return stay('weekly_limit');
+    if (mine.includes(mark)) return stay('weekly_limit'); // only weekly steps get here: a once step has upTo 1
     return {
       progress: { count: p.count + 1, completions: p.completions, counted: [...p.counted, mark] },
       award: { points: step.points, step: step.kind },

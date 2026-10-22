@@ -38,14 +38,20 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     if (fresh.length === 0) return earned(tx, entry.entryId); // already read: same answer again
 
     // shortcut: Streak progress arrives in T-03b.
+    // The version in force when the entry happened, then only those that watch its kind.
     const quests = await tx.query<LiveQuest>(
-      `SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.target, v.period, v.period_limit,
-              v.each_item, v.points, v.steps, v.trust_needed, q.quest_line
-         FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-        WHERE q.status = 'live' AND q.template <> 'streak' AND $1 = ANY(v.watches) AND v.valid_from <= $2
-        ORDER BY v.quest_id, v.version DESC`,
+      `SELECT * FROM (
+         SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
+                v.each_item, v.points, v.steps, v.trust_needed, q.quest_line
+           FROM quest_versions v JOIN quests q ON q.id = v.quest_id
+          WHERE q.status = 'live' AND q.template <> 'streak' AND v.valid_from <= $2
+          ORDER BY v.quest_id, v.version DESC) inforce
+        WHERE $1 = ANY(inforce.watches)
+        ORDER BY quest_id`,
       [entry.kind, entry.occurredAt],
     );
+    // An entry missing the item its own quest needs is not counted anywhere else either.
+    const missingItem = entry.item === undefined && quests.some((q) => q.each_item);
 
     const write = (q: LiveQuest, points: number, step: string | null, reason: string | null) => tx.query(
       `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step, reason)
@@ -61,6 +67,11 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
       if (TRUST_ORDER.indexOf(person.trust) < TRUST_ORDER.indexOf(q.trust_needed)) {
         await notPaid(q, `needs_${q.trust_needed}`);
         continue;
+      }
+      if (missingItem && q.template === 'collect') continue;
+      if (q.each_item === 'ever') {
+        // "Once per item, ever" reads other periods' rows, so lock the whole quest for this member.
+        await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.quest_id]);
       }
       const key = q.template === 'repeat' ? periodKey(entry.occurredAt, q.period, person.timezone) : 'once';
       // Make sure the row exists, then lock it, so two entries can't both take the last place.
@@ -118,17 +129,17 @@ export async function earned(db: Db, entryId: string): Promise<EntryResult> {
  * A member's progress on each quest they have touched, in its latest period: how far they are,
  * out of what (null when there is no limit, such as one survey after another).
  */
-export async function questProgress(db: Db, kiungoId: string) {
+export async function questProgress(db: Db, kiungoId: string, timezone: string, now = new Date()) {
   const rows = await db.query<{ quest: string; period: string; template: string; completions: number; counted: string[];
-    target: number; limit: number | null; each_item: string | null; steps: { kind: string }[] | null }>(
+    target: number; limit: number | null; each_item: string | null; steps: { kind: string }[] | null; every: Period }>(
     `SELECT DISTINCT ON (p.quest_id) p.quest_id AS quest, p.period_key AS period, q.template, p.completions, p.counted,
-            v.target, v.period_limit AS "limit", v.each_item, v.steps
+            v.target, v.period_limit AS "limit", v.each_item, v.steps, v.period AS every
        FROM quest_progress p JOIN quests q ON q.id = p.quest_id
-       JOIN LATERAL (SELECT * FROM quest_versions WHERE quest_id = p.quest_id AND valid_from IS NOT NULL
+       JOIN LATERAL (SELECT * FROM quest_versions WHERE quest_id = p.quest_id AND valid_from <= $2
                       ORDER BY version DESC LIMIT 1) v ON true
       WHERE p.kiungo_id = $1
       ORDER BY p.quest_id, p.period_key DESC`,
-    [kiungoId],
+    [kiungoId, now.toISOString()],
   );
   return rows.map((r) => {
     if (r.template === 'collect') return { quest: r.quest, period: r.period, progress: r.counted.length, target: r.target };
@@ -136,6 +147,8 @@ export async function questProgress(db: Db, kiungoId: string) {
       const reached = r.steps!.filter((s) => r.counted.some((c) => c === s.kind || c.startsWith(`${s.kind}@`))).length;
       return { quest: r.quest, period: r.period, progress: reached, target: r.steps!.length };
     }
-    return { quest: r.quest, period: r.period, progress: r.completions, target: r.limit ?? (r.each_item ? null : 1) };
+    // A repeating quest shows this period: nothing done yet if its latest row is from an earlier one.
+    const current = periodKey(now.toISOString(), r.every, timezone);
+    return { quest: r.quest, period: current, progress: current === r.period ? r.completions : 0, target: r.limit ?? (r.each_item ? null : 1) };
   });
 }

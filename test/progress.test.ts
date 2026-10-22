@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { periodKey } from '../src/points/periods';
 import { ADMIN, setup } from './helpers';
 
 // Week 2026-W43 runs Monday 19 to Sunday 25 October, in Kinshasa time (UTC+1).
@@ -7,6 +8,8 @@ const WED = '2026-10-21T09:00:00+01:00';
 const THU = '2026-10-22T09:00:00+01:00';
 const SUN_LATE_UTC = '2026-10-25T22:30:00Z'; // 23:30 Sunday in Kinshasa: still W43
 const MON_KINSHASA = '2026-10-25T23:30:00Z'; // 00:30 Monday 26 October in Kinshasa: W44
+const LATER = '2099-03-03T09:00:00Z'; // after any quest a test puts live
+const weekLater = (n: number) => new Date(Date.parse(LATER) + n * 7 * 86_400_000).toISOString();
 
 const SECTIONS = [
   'identity.phone_confirmed', 'picture.name', 'picture.look', 'picture.privacy', 'picture.age_range', 'picture.from',
@@ -61,6 +64,23 @@ describe('T-03 progress and limits', () => {
     expect((await t.act('k-amina', 'need.survey', THU, 'v4')).notAwarded).toEqual([{ quest: 'need.survey', reason: 'missing_item' }]);
   });
 
+  it('does not count a picture section whose own quest refused it for a missing item', async () => {
+    expect((await t.act('k-amina', 'unit.joined', TUE, 'u0')).notAwarded).toEqual([{ quest: 'unit.joined', reason: 'missing_item' }]);
+    const progress = (await t.call('GET', '/v1/people/k-amina/quests')).json.data;
+    expect(progress.find((q: any) => q.quest === 'picture.complete')).toBeUndefined();
+  });
+
+  it('pays by the version in force: a new version that stops watching a kind pays nothing for it', async () => {
+    await t.call('POST', '/v1/quests', {
+      id: 'offer.saved', title: 'Say what you can offer', questLine: 'offers', template: 'repeat',
+      watches: ['offer.updated'], target: 1, period: 'once', points: 20, trustNeeded: 'joined',
+    }, ADMIN);
+    await t.call('POST', '/v1/quests/offer.saved/live', undefined, ADMIN);
+    expect((await t.act('k-amina', 'offer.saved', TUE, 'o-old')).awards).toEqual([{ quest: 'offer.saved', points: 20 }]); // v1 was in force
+    await t.person('k-kofi');
+    expect((await t.act('k-kofi', 'offer.saved', LATER, 'o-new')).awards).toEqual([]); // v2 no longer watches it
+  });
+
   it('pays each service once every quarter', async () => {
     const pays = async (key: string, at: string, item: string) => (await t.act('k-amina', 'need.service_rated', at, key, { item })).awards.length;
     expect(await pays('r1', '2026-10-02T09:00:00Z', 'bank')).toBe(1);
@@ -88,18 +108,21 @@ describe('T-03 progress and limits', () => {
       ],
     }, ADMIN);
     await t.call('POST', '/v1/quests/local.tomato/live', undefined, ADMIN);
-    const at = new Date(Date.now() + 60_000).toISOString(); // after the quest went live
+    const at = LATER;
 
     expect((await t.act('k-amina', 'tomato.checked_in', at, 'c0')).notAwarded).toEqual([{ quest: 'local.tomato', reason: 'needs_earlier_step' }]);
     expect((await t.act('k-amina', 'tomato.planted', at, 'pl')).awards).toEqual([{ quest: 'local.tomato', points: 20, step: 'tomato.planted' }]);
     expect((await t.act('k-amina', 'tomato.checked_in', at, 'c1')).awards).toEqual([{ quest: 'local.tomato', points: 5, step: 'tomato.checked_in' }]);
     expect((await t.act('k-amina', 'tomato.checked_in', at, 'c2')).notAwarded).toEqual([{ quest: 'local.tomato', reason: 'weekly_limit' }]);
-    expect((await t.act('k-amina', 'tomato.harvested', at, 'hv')).awards).toEqual([{ quest: 'local.tomato', points: 50, step: 'tomato.harvested' }]);
+    for (const n of [1, 2, 3]) expect((await t.act('k-amina', 'tomato.checked_in', weekLater(n), `cw${n}`)).awards).toHaveLength(1);
+    expect((await t.act('k-amina', 'tomato.checked_in', weekLater(4), 'cw4')).notAwarded).toEqual([{ quest: 'local.tomato', reason: 'already_done' }]); // up to 4
+    expect((await t.act('k-amina', 'tomato.harvested', weekLater(4), 'hv')).awards).toEqual([{ quest: 'local.tomato', points: 50, step: 'tomato.harvested' }]);
 
     const progress = (await t.call('GET', '/v1/people/k-amina/quests')).json.data;
     expect(progress).toContainEqual(expect.objectContaining({ quest: 'local.tomato', progress: 3, target: 3 }));
   });
 
+  // PGlite runs one transaction at a time, so this checks the answer, not the lock; the lock is for PostgreSQL.
   it('pays only one of two entries that arrive at once for the last place', async () => {
     await t.act('k-amina', 'need.shopping_list', TUE, 's1');
     const [a, b] = await Promise.all([
@@ -110,14 +133,18 @@ describe('T-03 progress and limits', () => {
     expect((await t.call('GET', '/v1/people/k-amina/standing')).json.data.total).toBe(20);
   });
 
-  it('shows the member\'s progress on each quest they have touched', async () => {
-    await t.act('k-amina', 'need.shopping_list', TUE, 's1');
-    await t.act('k-amina', 'need.shopping_list', WED, 's2');
+  it('shows the member\'s progress on each quest they have touched, in this period', async () => {
+    const now = new Date().toISOString();
+    await t.act('k-amina', 'need.shopping_list', now, 's1');
+    await t.act('k-amina', 'need.shopping_list', now, 's2');
+    await t.act('k-amina', 'need.bought_week', new Date(Date.now() - 8 * 86_400_000).toISOString(), 'b-last-week');
     await t.act('k-amina', 'picture.look', WED, 'l1');
     const res = await t.call('GET', '/v1/people/k-amina/quests');
     expect(res.status).toBe(200);
+    const thisWeek = periodKey(now, 'weekly', 'Africa/Kinshasa');
     expect(res.json.data).toEqual(expect.arrayContaining([
-      { quest: 'need.shopping_list', period: '2026-W43', progress: 2, target: 2 },
+      { quest: 'need.shopping_list', period: thisWeek, progress: 2, target: 2 },
+      { quest: 'need.bought_week', period: thisWeek, progress: 0, target: 1 }, // done last week, not yet this week
       { quest: 'picture.look', period: 'once', progress: 1, target: 1 },
       { quest: 'picture.complete', period: 'once', progress: 1, target: 12 },
     ]));

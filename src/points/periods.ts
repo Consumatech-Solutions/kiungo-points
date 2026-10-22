@@ -7,7 +7,7 @@ const DAY_MS = 86_400_000;
 
 interface LocalDate { y: number; m: number; d: number } // m is 1-12
 
-/** Civil (calendar) Y/M/D of an instant in the given IANA timezone. */
+// Civil (calendar) Y/M/D of an instant in the given IANA timezone.
 function localDate(occurredAtMs: number, timezone: string): LocalDate {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -21,7 +21,7 @@ function localDate(occurredAtMs: number, timezone: string): LocalDate {
   return { y, m, d };
 }
 
-/** ISO-8601 (Monday-start) week for a civil date, plus the Monday's UTC ms. */
+// ISO-8601 (Monday-start) week for a civil date, plus the Monday's UTC ms.
 function isoWeek(ld: LocalDate): { isoYear: number; week: number; mondayMs: number } {
   const utc = Date.UTC(ld.y, ld.m - 1, ld.d);
   const dayNum = (new Date(utc).getUTCDay() + 6) % 7; // Mon=0..Sun=6

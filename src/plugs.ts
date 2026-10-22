@@ -21,10 +21,8 @@ export interface ActivityEntry {
   kind: string;
   occurredAt: string;
   carriage: string;
-  /** Which thing it is about, for quests paid once per item: a survey, a shop, an invited person. */
-  item?: string;
-  /** A reference to its proof, such as a sale code. */
-  evidence?: string;
+  item?: string;     // which thing it is about, for quests paid once per item: a survey, a shop, an invited person
+  evidence?: string; // a reference to its proof, such as a sale code
 }
 
 /** The name the points system reads activity under. */
