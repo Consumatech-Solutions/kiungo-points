@@ -11,7 +11,7 @@ Full detail: the TRD in [`kiungo-africa-site/docs/gamification/engine/trd.md`](h
 | Standing | Where a person stands | `standing`, `earned` | counting points (the invite and local caps), the extra needs per level, levels never going down | `src/points/standing.ts` |
 | Readers | Which carriages may call, by one hashed key each | `setCarriage`, `carriageFor` | hashed keys, rotation, switching a carriage off (the member's permission is asked through the identity plug; rate limits through the `limit` dependency) | `src/readers.ts` |
 | Identity and Activity plugs | The way to the rail | `IdentityPlug`, `ActivityEntry` | where answers come from | `src/plugs.ts` |
-| Stand-in rails | Temporary rails until T-12 | `/standin/*` | | `src/standin/` |
+| Stand-in rails | Temporary rails until T-12 | `/standin/*` (`standinRoutes`) | | `src/standin/` |
 
 ## Stack
 

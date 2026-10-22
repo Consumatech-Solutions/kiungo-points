@@ -45,9 +45,7 @@ describe('T-01 walking skeleton', () => {
 
   it('pays nothing, and keeps no reference, when the person has not allowed Kiungo', async () => {
     const res = await t.call('POST', '/standin/activity', { kiungoId: 'k-kofi', kind: PHONE, occurredAt: at, key: 'p1' }, CARRIAGE_KEY);
-    expect(res.json.data.awards).toEqual([]);
-    expect(res.json.data.notAwarded).toEqual([{ quest: null, reason: 'no_permission' }]);
-    expect(res.json.data.total).toBeUndefined(); // Kofi lets no carriage read his points
+    expect(res.json.data).toEqual({ entry: 'my.kiungo.africa:p1' }); // Kofi lets no carriage see his points
     expect(await t.db.query('SELECT 1 FROM entries_read WHERE kiungo_id = $1', ['k-kofi'])).toEqual([]);
   });
 

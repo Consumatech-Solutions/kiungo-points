@@ -39,6 +39,7 @@ describe('T-06 carriages and permissions', () => {
 
   it('pays nothing once Amina withdraws Kiungo\'s permission, and keeps what she earned', async () => {
     await write(CARRIAGE_KEY, 'identity.phone_confirmed', 'p1');
+    await t.call('POST', '/standin/permissions', { kiungoId: 'k-amina', reader: 'kasipos', allowed: true }, ADMIN);
     await t.call('POST', '/standin/permissions', { kiungoId: 'k-amina', reader: 'kiungo-points', allowed: false }, ADMIN);
     const after = await write(KASIPOS, 'business.shop_onboarded', 's1', { item: 'shop-1' });
     expect(after.json.data.awards).toEqual([]);
@@ -46,11 +47,37 @@ describe('T-06 carriages and permissions', () => {
     expect((await t.call('GET', '/v1/people/k-amina/standing', undefined, CARRIAGE_KEY)).json.data.total).toBe(10);
   });
 
-  it('answers a writing carriage with the standing only if the member lets it read', async () => {
+  it('tells a writing carriage what the entry earned only if the member lets it read her points', async () => {
     const res = await write(KASIPOS, 'business.shop_onboarded', 's1', { item: 'shop-1' });
-    expect(res.json.data.awards).toEqual([{ quest: 'business.shop_onboarded', points: 150 }]);
-    expect(res.json.data.total).toBeUndefined();
-    expect(res.json.data.level).toBeUndefined();
+    expect(res.status).toBe(201);
+    expect(res.json.data).toEqual({ entry: 'kasipos:s1' });
+    await t.call('POST', '/standin/permissions', { kiungoId: 'k-amina', reader: 'kasipos', allowed: true }, ADMIN);
+    const again = await write(KASIPOS, 'business.shop_onboarded', 's1', { item: 'shop-1' });
+    expect(again.json.data).toMatchObject({ awards: [{ quest: 'business.shop_onboarded', points: 150 }], total: 150 });
+  });
+
+  it('shows a carriage only this member\'s entries', async () => {
+    await t.person('k-kofi', 'joined', 'Africa/Kinshasa', ['kiungo-points', 'my.kiungo.africa']);
+    await t.call('POST', '/standin/activity', { kiungoId: 'k-kofi', kind: 'identity.phone_confirmed', occurredAt: AT, key: 'kofi-p1' }, CARRIAGE_KEY);
+    const res = await t.call('GET', '/v1/people/k-amina/awards?entry=my.kiungo.africa:kofi-p1', undefined, CARRIAGE_KEY);
+    expect(res.json.data.awards).toEqual([]);
+  });
+
+  it('refuses a key another carriage already has, and keeps a switched-off carriage off', async () => {
+    const taken = await t.call('POST', '/v1/carriages', { name: 'testify', key: KASIPOS }, ADMIN);
+    expect(taken.status).toBe(409);
+    await t.call('POST', '/v1/carriages', { name: 'testify', key: TESTIFY, active: false }, ADMIN);
+    await t.call('POST', '/standin/carriages', { name: 'testify', key: TESTIFY, mayWrite: ['rating.verified'] }, ADMIN);
+    expect((await t.call('GET', '/v1/people/k-amina/standing', undefined, TESTIFY)).status).toBe(401);
+  });
+
+  it('limits wrong keys by address, so keys can\'t be guessed', async () => {
+    const limited = await setup({ limit: 2 });
+    const guess = () => limited.call('GET', '/v1/people/k-amina/standing', undefined, 'a-guessed-key-000000000000000');
+    expect((await guess()).status).toBe(401);
+    expect((await guess()).status).toBe(401);
+    expect((await guess()).status).toBe(429);
+    expect((await limited.call('POST', '/v1/quests/share.post/pause', undefined, 'a-guessed-admin-key-0000000')).status).toBe(429);
   });
 
   it('refuses a missing, unknown or switched-off key', async () => {

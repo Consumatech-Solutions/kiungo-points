@@ -29,4 +29,4 @@ Tests run against PGlite, a PostgreSQL that runs inside the test process, so not
 
 1. Create a managed PostgreSQL database and run the files in `migrations/` in order.
 2. In the Cloudflare dashboard, create a Hyperdrive for it and put its id in `wrangler.jsonc`.
-3. Set the `ADMIN_KEY` secret in the Cloudflare dashboard. Never in code or chat.
+3. Set the `ADMIN_KEY` secret in the Cloudflare dashboard: at least 24 characters (a shorter key switches admin off). Never in code or chat.
