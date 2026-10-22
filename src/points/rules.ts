@@ -8,7 +8,8 @@ export interface Rule {
   limit: number | null;
   eachItem: string | null;
   points: number | null;
-  steps: { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[] | null;
+  // Steps: the stages. Streak: the milestones.
+  steps: { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[] | { weeks: number; points: number }[] | null;
 }
 
 // One quest's progress in one period. `counted` holds items paid, sections collected or steps reached.
@@ -25,7 +26,8 @@ export interface Seen {
   kind: string;
   item?: string;
   itemPaidBefore: boolean; // for eachItem 'ever': already paid in an earlier period
-  week: string; // the week the entry falls in, for weekly steps
+  week: string; // the week the entry falls in, for weekly steps (2026-W43)
+  weekNo: number; // the same week as a number, for streaks
 }
 
 const LIMIT_REASON: Record<string, string> = {
@@ -48,8 +50,10 @@ export function decide(rule: Rule, p: Progress, seen: Seen): Decision {
     };
   }
 
+  if (rule.template === 'streak') return streak(rule, p, seen.weekNo);
+
   if (rule.template === 'steps') {
-    const steps = rule.steps!;
+    const steps = rule.steps as { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[];
     const at = steps.findIndex((s) => s.kind === seen.kind);
     const step = steps[at]!;
     const marks = (kind: string) => p.counted.filter((c) => c === kind || c.startsWith(`${kind}@`));
@@ -77,6 +81,42 @@ export function decide(rule: Rule, p: Progress, seen: Seen): Decision {
   return {
     progress: { count: 0, completions: p.completions + 1, counted: seen.item && rule.eachItem ? [...p.counted, seen.item] : p.counted },
     award: { points: rule.points! },
+    reason: null,
+  };
+}
+
+/** A streak's weeks (`w:<week number>`) and the milestones paid (`paid:<week that reached it>:<weeks>`). */
+export function readStreak(counted: string[]) {
+  const weeks = counted.filter((c) => c.startsWith('w:')).map((c) => Number(c.slice(2))).sort((a, b) => a - b);
+  const paid = counted.filter((c) => c.startsWith('paid:')).map((c) => c.split(':').slice(1).map(Number) as [number, number]);
+  return { weeks, paid, runs: runs(weeks) };
+}
+
+// Splits sorted weeks into runs: weeks at most two apart, so one missed week doesn't break a run.
+function runs(weeks: number[]): number[][] {
+  const out: number[][] = [];
+  for (const w of weeks) {
+    const last = out.at(-1);
+    if (last && w - last.at(-1)! <= 2) last.push(w);
+    else out.push([w]);
+  }
+  return out;
+}
+
+// Changed from AMU (ADR-002): weekly, one missed week forgiven, milestones only ever add points.
+function streak(rule: Rule, p: Progress, weekNo: number): Decision {
+  if (p.counted.includes(`w:${weekNo}`)) return { progress: p, award: null, reason: null };
+  const counted = [...p.counted, `w:${weekNo}`];
+  const { paid, runs: all } = readStreak(counted);
+  const run = all.find((r) => r.includes(weekNo))!;
+  // A milestone counts as paid for this run if any week inside the run already reached it.
+  const due = (rule.steps as { weeks: number; points: number }[])
+    .filter((m) => run.length >= m.weeks && !paid.some(([w, weeks]) => weeks === m.weeks && run.includes(w)));
+  for (const m of due) counted.push(`paid:${weekNo}:${m.weeks}`);
+  const top = due.at(-1);
+  return {
+    progress: { count: p.count, completions: p.completions + due.length, counted }, // runs are read from `counted`
+    award: top ? { points: due.reduce((sum, m) => sum + m.points, 0), step: `${top.weeks} weeks` } : null,
     reason: null,
   };
 }

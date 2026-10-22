@@ -74,9 +74,18 @@ describe('T-02 the quest board and templates', () => {
 
   it('lists every core quest with the points, limits and trust levels from activities.md', async () => {
     const live = await board();
-    const shown = live.map((q) => [q.quest, q.points, q.period, q.limit, q.eachItem, q.trustNeeded]);
+    const shown = live
+      .filter((q) => q.template !== 'streak') // activities.md §8b; checked in the next test
+      .map((q) => [q.quest, q.points, q.period, q.limit, q.eachItem, q.trustNeeded]);
     expect(shown).toEqual(expect.arrayContaining(CORE));
     expect(shown).toHaveLength(CORE.length);
+  });
+
+  it('lists "Keep it up" with its milestones from activities.md §8b', async () => {
+    expect((await board()).find((q) => q.quest === 'streak.need_weekly')).toMatchObject({
+      template: 'streak', questLine: 'needs', trustNeeded: 'joined',
+      steps: [{ weeks: 4, points: 20 }, { weeks: 12, points: 50 }, { weeks: 26, points: 100 }],
+    });
   });
 
   it('counts the picture as complete when all twelve sections are answered', async () => {
