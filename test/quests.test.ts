@@ -112,6 +112,16 @@ describe('T-02 the quest board and templates', () => {
     expect(res.json.error.message).toMatch(/tomato\.planted/);
   });
 
+  it('refuses a step that repeats without being weekly, and an item quest with a target above 1', async () => {
+    const step = await t.call('POST', '/v1/quests', { ...tomato, steps: [{ kind: 'tomato.planted', points: 20, upTo: 2 }] }, ADMIN);
+    expect(step.json.error.message).toMatch(/weekly/);
+    const item = await t.call('POST', '/v1/quests', {
+      id: 'need.test', title: 'Test', questLine: 'needs', template: 'repeat', watches: ['need.test'],
+      target: 2, period: 'once', eachItem: 'ever', points: 5, trustNeeded: 'joined',
+    }, ADMIN);
+    expect(item.json.error.message).toMatch(/target of 1/);
+  });
+
   it('says the Mission template is not yet available', async () => {
     const res = await t.call('POST', '/v1/quests', {
       id: 'm.test', title: 'Test', questLine: 'local', template: 'mission', trustNeeded: 'joined',
@@ -169,14 +179,14 @@ describe('T-02 the quest board and templates', () => {
     expect(res.json.error.message).toMatch(/quest line/);
   });
 
-  it('a live Steps quest does not break an entry before its progress exists', async () => {
+  it('a live Steps quest pays its step alongside the other quests watching the same kind', async () => {
     await t.call('POST', '/v1/quests', { ...tomato, steps: [{ kind: 'identity.phone_confirmed', points: 5 }] }, ADMIN);
     await t.call('POST', '/v1/quests/local.tomato/live', undefined, ADMIN);
     await t.call('POST', '/standin/people', { kiungoId: 'k-amina', trust: 'joined', timezone: 'UTC', allows: ['kiungo-points'] }, ADMIN);
     const res = await t.call('POST', '/standin/activity',
       { kiungoId: 'k-amina', kind: 'identity.phone_confirmed', occurredAt: new Date(Date.now() + 60_000).toISOString(), key: 'p1' }, CARRIAGE_KEY);
     expect(res.status).toBe(201);
-    expect(res.json.data.total).toBe(10);
+    expect(res.json.data.total).toBe(15); // 10 for the phone, 5 for the step
   });
 
   it('answers 404 for a quest that does not exist', async () => {

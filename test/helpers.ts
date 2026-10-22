@@ -13,6 +13,9 @@ function fromPglite(pg: PGlite | Transaction): Db {
 
 export const ADMIN = 'test-admin-key';
 export const CARRIAGE_KEY = 'my-kiungo-test-key-000000000000';
+/** A test carriage that may write every kind of activity on the board, and a few that are not. */
+export const ANY_KEY = 'any-kind-test-key-0000000000000';
+const EXTRA_KINDS = ['vouch.given', 'payment.sent', 'tomato.planted', 'tomato.checked_in', 'tomato.harvested'];
 
 /** A fresh database with every migration applied, and the app on top of it. */
 export async function setup() {
@@ -33,5 +36,16 @@ export async function setup() {
   await call('POST', '/standin/carriages',
     { name: 'my.kiungo.africa', key: CARRIAGE_KEY, mayWrite: ['identity.phone_confirmed'] }, ADMIN);
 
-  return { pg, db, call };
+  const kinds = await db.query<{ k: string }>('SELECT DISTINCT unnest(watches) AS k FROM quest_versions');
+  await call('POST', '/standin/carriages',
+    { name: 'kiungo.test', key: ANY_KEY, mayWrite: [...kinds.map((r) => r.k), ...EXTRA_KINDS] }, ADMIN);
+
+  /** A carriage writes one entry; returns what it earned and the standing. */
+  const act = async (kiungoId: string, kind: string, occurredAt: string, key: string, extra: { item?: string; evidence?: string } = {}) =>
+    (await call('POST', '/standin/activity', { kiungoId, kind, occurredAt, key, ...extra }, ANY_KEY)).json.data;
+
+  const person = (kiungoId: string, trust = 'joined', timezone = 'Africa/Kinshasa', allows = ['kiungo-points']) =>
+    call('POST', '/standin/people', { kiungoId, trust, timezone, allows }, ADMIN);
+
+  return { pg, db, call, act, person };
 }
