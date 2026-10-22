@@ -31,7 +31,7 @@ export function createApp({ db, identity, adminKey }: Deps) {
   app.post('/v1/quests', async (c) => {
     if (!admin(c.req.header('authorization'))) return c.json(error('not_allowed', 'Admin key needed.'), 401);
     const body = QuestDraft.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => i.message).join(' ')), 400);
+    if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);
     const result = await draftQuest(db, body.data);
     if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
     return c.json({ data: result }, 201);

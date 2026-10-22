@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ADMIN, setup } from './helpers';
+import { ADMIN, CARRIAGE_KEY, setup } from './helpers';
 
 // Typed out by hand from activities.md, quest lines 1 to 7: [quest, points, period, limit per period, each item, trust].
 const CORE: [string, number, string, number | null, string | null, string][] = [
@@ -74,9 +74,7 @@ describe('T-02 the quest board and templates', () => {
 
   it('lists every core quest with the points, limits and trust levels from activities.md', async () => {
     const live = await board();
-    const shown = live
-      .filter((q) => q.template !== 'streak')
-      .map((q) => [q.quest, q.points, q.period, q.limit, q.eachItem, q.trustNeeded]);
+    const shown = live.map((q) => [q.quest, q.points, q.period, q.limit, q.eachItem, q.trustNeeded]);
     expect(shown).toEqual(expect.arrayContaining(CORE));
     expect(shown).toHaveLength(CORE.length);
   });
@@ -160,6 +158,25 @@ describe('T-02 the quest board and templates', () => {
   it('needs the admin key to draft or change a quest', async () => {
     expect((await t.call('POST', '/v1/quests', tomato, 'not-admin')).status).toBe(401);
     expect((await t.call('POST', '/v1/quests/share.post/pause', undefined, 'not-admin')).status).toBe(401);
+  });
+
+  it('refuses a new version that changes the quest line', async () => {
+    const res = await t.call('POST', '/v1/quests', {
+      id: 'share.post', title: 'Share a Kiungo post', questLine: 'building', template: 'repeat',
+      watches: ['share.post'], target: 1, period: 'weekly', limit: 2, points: 5, trustNeeded: 'joined',
+    }, ADMIN);
+    expect(res.status).toBe(400);
+    expect(res.json.error.message).toMatch(/quest line/);
+  });
+
+  it('a live Steps quest does not break an entry before its progress exists', async () => {
+    await t.call('POST', '/v1/quests', { ...tomato, steps: [{ kind: 'identity.phone_confirmed', points: 5 }] }, ADMIN);
+    await t.call('POST', '/v1/quests/local.tomato/live', undefined, ADMIN);
+    await t.call('POST', '/standin/people', { kiungoId: 'k-amina', trust: 'joined', timezone: 'UTC', allows: ['kiungo-points'] }, ADMIN);
+    const res = await t.call('POST', '/standin/activity',
+      { kiungoId: 'k-amina', kind: 'identity.phone_confirmed', occurredAt: new Date(Date.now() + 60_000).toISOString(), key: 'p1' }, CARRIAGE_KEY);
+    expect(res.status).toBe(201);
+    expect(res.json.data.total).toBe(10);
   });
 
   it('answers 404 for a quest that does not exist', async () => {

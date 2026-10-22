@@ -2,7 +2,8 @@
 import { z } from 'zod';
 
 const KIND = z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/, 'Use lower-case words joined by dots, e.g. need.shopping_list.');
-const positive = (label: string) => z.number().int().refine((n) => n > 0, `${label} must be a positive number.`);
+const positive = (label: string) => z.number().int().refine((n) => n > 0, `${label} must be a positive number.`)
+  .refine((n) => n <= 1000, `${label} can be at most 1000.`);
 
 const common = {
   id: KIND,
@@ -45,7 +46,7 @@ export const QuestDraft = z.discriminatedUnion('template', [
     watches: z.array(KIND).min(1),
     milestones: z.array(z.object({ weeks: positive('weeks'), points: positive('Every milestone\'s points') }).strict()).min(1),
   }).strict(),
-  z.object({ ...common, template: z.literal('mission') }).passthrough(),
+  z.object({ ...common, template: z.literal('mission') }).strict(),
 ]);
 export type QuestDraft = z.infer<typeof QuestDraft>;
 

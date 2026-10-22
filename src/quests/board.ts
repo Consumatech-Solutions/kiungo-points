@@ -21,13 +21,16 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
   if ('reason' in compiled) return compiled;
   const v = compiled.version;
   return db.tx(async (tx) => {
-    const [q] = await tx.query<{ status: string; template: string }>(
+    const [q] = await tx.query<{ status: string; template: string; quest_line: string; building: boolean }>(
       `INSERT INTO quests (id, quest_line, status, template, building) VALUES ($1, $2, 'draft', $3, $4)
-       ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template`,
+       ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template, quest_line, building`,
       [d.id, d.questLine, d.template, d.building],
     );
     if (q!.status === 'ended') return { reason: 'This quest has ended. Draft it under a new id.' };
     if (q!.template !== d.template) return { reason: `This quest is a ${q!.template} quest; a new version keeps its template.` };
+    if (q!.quest_line !== d.questLine || q!.building !== d.building) {
+      return { reason: 'A new version keeps the quest line and whether it counts as building. Draft a new quest to change them.' };
+    }
     const [row] = await tx.query<{ version: number }>(
       `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed)
        SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10 FROM quest_versions WHERE quest_id = $1
@@ -46,8 +49,8 @@ const NEXT: Record<'live' | 'pause' | 'end', { to: string; from: string[] }> = {
 };
 
 /**
- * Puts a quest live (with its drafted versions in force from now), pauses it or ends it.
- * Ending is for good.
+ * Puts a quest live, pauses it or ends it. Putting live (or resuming a paused quest) also puts
+ * every drafted version in force from now. Ending is for good.
  */
 export async function setStatus(db: Db, id: string, step: keyof typeof NEXT) {
   return db.tx(async (tx) => {
