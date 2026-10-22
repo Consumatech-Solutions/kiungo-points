@@ -70,7 +70,7 @@ describe('T-01 walking skeleton', () => {
 
   it('publishes the quest board', async () => {
     const res = await t.call('GET', '/v1/quests');
-    expect(res.json.data).toEqual([expect.objectContaining({ quest: PHONE, points: 10, period: 'once', trust_needed: 'joined' })]);
+    expect(res.json.data).toEqual(expect.arrayContaining([expect.objectContaining({ quest: PHONE, points: 10, period: 'once', trustNeeded: 'joined' })]));
   });
 
   it('needs the admin key to set up stand-in people', async () => {

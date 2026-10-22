@@ -4,6 +4,8 @@ import type { Db } from './db';
 import type { IdentityPlug } from './plugs';
 import { earned, takeEntry } from './points/progress';
 import { standing } from './points/standing';
+import { draftQuest, liveQuests, setStatus } from './quests/board';
+import { QuestDraft } from './quests/templates';
 import { carriageFor, sha256, writeEntry } from './standin/rails';
 
 export interface Deps { db: Db; identity: IdentityPlug; adminKey: string }
@@ -21,15 +23,29 @@ export function createApp({ db, identity, adminKey }: Deps) {
     return c.json(error('server_error', 'Something went wrong on our side. Try again.'), 500);
   });
 
+  const admin = (h: string | undefined) => adminKey.length > 0 && bearer(h) === adminKey;
+
   // The public quest board (transparency, ADR-001).
-  app.get('/v1/quests', async (c) => {
-    const rows = await db.query(
-      `SELECT DISTINCT ON (v.quest_id) v.quest_id AS quest, q.quest_line, v.version, v.watches,
-              v.target, v.period, v.points, v.trust_needed
-         FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-        WHERE q.status = 'live' ORDER BY v.quest_id, v.version DESC`,
-    );
-    return c.json({ data: rows });
+  app.get('/v1/quests', async (c) => c.json({ data: await liveQuests(db) }));
+
+  app.post('/v1/quests', async (c) => {
+    if (!admin(c.req.header('authorization'))) return c.json(error('not_allowed', 'Admin key needed.'), 401);
+    const body = QuestDraft.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => i.message).join(' ')), 400);
+    const result = await draftQuest(db, body.data);
+    if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
+    return c.json({ data: result }, 201);
+  });
+
+  app.post('/v1/quests/:id/:step{live|pause|end}', async (c) => {
+    if (!admin(c.req.header('authorization'))) return c.json(error('not_allowed', 'Admin key needed.'), 401);
+    const result = await setStatus(db, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end');
+    if ('error' in result) {
+      if (result.error === 'unknown_quest') return c.json(error('unknown_quest', 'No quest with this id.'), 404);
+      if (result.error === 'quest_ended') return c.json(error('quest_ended', 'This quest has ended for good.'), 409);
+      return c.json(error('not_allowed', 'Only a live quest can be paused.'), 409);
+    }
+    return c.json({ data: result });
   });
 
   // shortcut: reading a member's points needs no reader key yet; T-06 adds keys and the member's permission.
@@ -47,8 +63,6 @@ export function createApp({ db, identity, adminKey }: Deps) {
   });
 
   // ---- Stand-in rails (ADR-003). Removed in T-12. ----
-
-  const admin = (h: string | undefined) => adminKey.length > 0 && bearer(h) === adminKey;
 
   app.post('/standin/people', async (c) => {
     if (!admin(c.req.header('authorization'))) return c.json(error('not_allowed', 'Admin key needed.'), 401);
