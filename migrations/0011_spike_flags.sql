@@ -16,6 +16,7 @@ CREATE TABLE spike_flags (
   reviewed_at  timestamptz,
   note         text
 );
-CREATE INDEX spike_flags_open ON spike_flags (kiungo_id, kind, at);
+CREATE INDEX spike_flags_by_person ON spike_flags (kiungo_id, kind, at);
+CREATE INDEX spike_flags_to_review ON spike_flags (id) WHERE reviewed_at IS NULL;
 
 CREATE INDEX entries_read_by_person_kind ON entries_read (kiungo_id, kind, occurred_at);

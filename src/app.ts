@@ -211,8 +211,9 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
       kind: z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/).max(64),
       count: z.number().int().min(2).max(10000),
       minutes: z.number().int().min(1).max(10080),
-    }).strict()).max(100).safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json(error('invalid_request', 'Send a list of { kind, count (2 or more), minutes (1 to 10080) }.'), 400);
+    }).strict()).max(100).refine((xs) => new Set(xs.map((x) => x.kind)).size === xs.length, 'Each kind once.')
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json(error('invalid_request', 'Send a list of { kind, count (2 or more), minutes (1 to 10080) }, each kind once.'), 400);
     await setSpikeSettings(db, body.data);
     return c.json({ data: body.data });
   });
@@ -235,7 +236,9 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const id = z.coerce.number().int().positive().safeParse(c.req.param('id'));
     const body = z.object({ note: z.string().trim().min(1).max(500) }).strict().safeParse(await c.req.json().catch(() => null));
     if (!id.success || !body.success) return c.json(error('invalid_request', 'Say what you found, in a note.'), 400);
-    if (!(await reviewFlag(db, id.data, body.data.note))) return c.json(error('unknown_flag', 'No flag with this id.'), 404);
+    const result = await reviewFlag(db, id.data, body.data.note);
+    if (result === 'unknown') return c.json(error('unknown_flag', 'No flag with this id.'), 404);
+    if (result === 'already_reviewed') return c.json(error('already_reviewed', 'This flag has already been reviewed.'), 409);
     return c.json({ data: { id: id.data, reviewed: true } });
   });
 

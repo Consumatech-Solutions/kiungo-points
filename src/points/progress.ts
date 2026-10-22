@@ -45,6 +45,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
       [entry.entryId, entry.kiungoId, entry.kind, entry.occurredAt, entry.carriage],
     );
     if (fresh.length === 0) return earned(tx, entry.entryId); // already read: same answer again
+    await checkSpike(tx, entry); // every kind, never-earns included: repeated vouching is a pattern to look at
 
     if (NEVER_EARNS.test(entry.kind)) {
       await tx.query("UPDATE entries_read SET outcome = 'never_earns' WHERE entry_id = $1", [entry.entryId]);
@@ -140,7 +141,6 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
       }
     }
     result.awards.push(...(await giveMarks(tx, person, entry.entryId, entry.occurredAt)));
-    await checkSpike(tx, entry);
     return result;
   });
 }
