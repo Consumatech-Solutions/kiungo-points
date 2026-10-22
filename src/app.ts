@@ -2,7 +2,8 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { Db } from './db';
 import type { IdentityPlug } from './plugs';
-import { earned, questProgress, takeEntry } from './points/progress';
+import { allAwards, correct, history } from './points/history';
+import { earned, questProgress } from './points/progress';
 import { standing } from './points/standing';
 import { draftQuest, liveQuests, setStatus } from './quests/board';
 import { QuestDraft } from './quests/templates';
@@ -72,8 +73,9 @@ export function createApp({ db, identity, adminKey, limit }: Deps) {
     return name;
   };
 
-  // A member's points, for a carriage the member has allowed to read them.
+  // A member's points, for a carriage the member has allowed to read them. Never cached on the way.
   const memberFor = async (c: Context): Promise<{ id: string; carriage: string } | Response> => {
+    c.header('cache-control', 'private, no-store');
     const id = KIUNGO_ID.safeParse(c.req.param('kiungoId'));
     if (!id.success) return c.json(error('invalid_kiungo_id', 'Use letters, digits, - and _, up to 64.'), 400);
     const carriage = await carriageOf(c);
@@ -114,9 +116,41 @@ export function createApp({ db, identity, adminKey, limit }: Deps) {
     const m = await memberFor(c);
     if (m instanceof Response) return m;
     const entry = c.req.query('entry');
-    if (!entry) return c.json(error('entry_required', 'Add ?entry=<entry id>. The full history arrives in T-07.'), 400);
-    const result = await earned(db, entry, m.id);
-    return c.json({ data: { ...result, ...(await standing(db, identity, m.id)) } });
+    if (entry) {
+      const result = await earned(db, entry, m.id);
+      return c.json({ data: { ...result, ...(await standing(db, identity, m.id)) } });
+    }
+    const page = z.object({ limit: z.coerce.number().int().min(1).max(100).default(10), before: z.coerce.number().int().positive().optional() })
+      .safeParse(c.req.query());
+    if (!page.success) return c.json(error('invalid_request', 'limit is 1 to 100; before is an award id.'), 400);
+    const { lines, next } = await history(db, m.id, page.data);
+    return c.json({ data: lines, meta: { next } });
+  });
+
+  // The member's whole points record, to keep (TRD §5).
+  app.get('/v1/people/:kiungoId/export', async (c) => {
+    const m = await memberFor(c);
+    if (m instanceof Response) return m;
+    c.header('content-disposition', `attachment; filename="kiungo-points-${m.id}.json"`);
+    return c.json({ data: {
+      note: 'Your Kiungo points record. Points have no cash value.',
+      exportedAt: new Date().toISOString(),
+      standing: await standing(db, identity, m.id),
+      awards: await allAwards(db, m.id),
+    } });
+  });
+
+  app.post('/v1/corrections', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    const body = z.object({ award: z.number().int().positive(), reason: z.string().trim().min(1).max(200) })
+      .strict().safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json(error('invalid_request', 'Send the award id and a reason, such as "duplicate photo".'), 400);
+    const result = await correct(db, body.data.award, body.data.reason);
+    if ('line' in result) return c.json({ data: result.line }, 201);
+    if (result.error === 'unknown_award') return c.json(error('unknown_award', 'No award with this id.'), 404);
+    if (result.error === 'already_corrected') return c.json(error('already_corrected', 'This award has already been corrected.'), 409);
+    return c.json(error('not_correctable', 'Only an award that paid points can be corrected, and only once.'), 409);
   });
 
   // ---- Stand-in rails (ADR-003). Removed in T-12. ----
