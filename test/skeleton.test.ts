@@ -10,7 +10,7 @@ describe('T-01 walking skeleton', () => {
   beforeEach(async () => {
     t = await setup();
     await t.call('POST', '/standin/people',
-      { kiungoId: 'k-amina', trust: 'joined', timezone: 'Africa/Kinshasa', allows: ['kiungo-points'] }, ADMIN);
+      { kiungoId: 'k-amina', trust: 'joined', timezone: 'Africa/Kinshasa', allows: ['kiungo-points', 'my.kiungo.africa', 'kiungo.test'] }, ADMIN);
     await t.call('POST', '/standin/people',
       { kiungoId: 'k-kofi', trust: 'joined', timezone: 'Africa/Accra', allows: [] }, ADMIN);
   });
@@ -47,7 +47,7 @@ describe('T-01 walking skeleton', () => {
     const res = await t.call('POST', '/standin/activity', { kiungoId: 'k-kofi', kind: PHONE, occurredAt: at, key: 'p1' }, CARRIAGE_KEY);
     expect(res.json.data.awards).toEqual([]);
     expect(res.json.data.notAwarded).toEqual([{ quest: null, reason: 'no_permission' }]);
-    expect(res.json.data.total).toBe(0);
+    expect(res.json.data.total).toBeUndefined(); // Kofi lets no carriage read his points
     expect(await t.db.query('SELECT 1 FROM entries_read WHERE kiungo_id = $1', ['k-kofi'])).toEqual([]);
   });
 

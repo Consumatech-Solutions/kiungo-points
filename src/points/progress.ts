@@ -126,12 +126,15 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
 }
 
 /** What an entry already earned, from the notebook. */
-export async function earned(db: Db, entryId: string): Promise<EntryResult> {
+export async function earned(db: Db, entryId: string, kiungoId?: string): Promise<EntryResult> {
   const rows = await db.query<{ quest_id: string; points: number; step: string | null; reason: string | null }>(
-    'SELECT quest_id, points, step, reason FROM awards WHERE entry_id = $1 ORDER BY id', [entryId],
+    `SELECT quest_id, points, step, reason FROM awards WHERE entry_id = $1 AND ($2::text IS NULL OR kiungo_id = $2) ORDER BY id`,
+    [entryId, kiungoId ?? null],
   );
   const result: EntryResult = { entry: entryId, awards: [], notAwarded: [] };
-  const [read] = await db.query<{ outcome: string | null }>('SELECT outcome FROM entries_read WHERE entry_id = $1', [entryId]);
+  const [read] = await db.query<{ outcome: string | null }>(
+    'SELECT outcome FROM entries_read WHERE entry_id = $1 AND ($2::text IS NULL OR kiungo_id = $2)', [entryId, kiungoId ?? null],
+  );
   if (read?.outcome) result.notAwarded.push({ quest: null, reason: read.outcome });
   for (const r of rows) {
     if (r.points === 0 && r.reason) result.notAwarded.push({ quest: r.quest_id, reason: r.reason });
