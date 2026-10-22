@@ -24,10 +24,12 @@ describe('T-07 history, download and corrections', () => {
 
     const lines = (await history()).data;
     expect(lines.slice(0, 2)).toMatchObject([
-      { quest: 'build.idea_taken_up', points: -50, reason: 'correction: duplicate photo', corrects: award.id, entry: null },
+      { quest: 'build.idea_taken_up', points: -50, reason: 'correction: duplicate photo', corrects: award.id, entry: 'kiungo.test:idea' },
       { quest: 'build.idea_taken_up', points: 50, id: award.id },
     ]);
     expect((await t.call('GET', '/v1/people/k-amina/standing')).json.data.total).toBe(10);
+    const byEntry = await t.call('GET', '/v1/people/k-amina/awards?entry=kiungo.test:idea');
+    expect(byEntry.json.data.awards).toEqual([{ quest: 'build.idea_taken_up', points: 50 }, { quest: 'build.idea_taken_up', points: -50 }]);
   });
 
   it('cancels an award once, and never a correction', async () => {
@@ -38,6 +40,7 @@ describe('T-07 history, download and corrections', () => {
     expect(again.json.error.code).toBe('already_corrected');
     const ofCorrection = await t.call('POST', '/v1/corrections', { award: first.json.data.id, reason: 'oops' }, ADMIN);
     expect(ofCorrection.status).toBe(409);
+    expect(ofCorrection.json.error.code).toBe('not_correctable');
     expect((await t.call('POST', '/v1/corrections', { award: 999999, reason: 'x' }, ADMIN)).status).toBe(404);
   });
 
@@ -45,6 +48,10 @@ describe('T-07 history, download and corrections', () => {
     const award = await fifty();
     expect((await t.call('POST', '/v1/corrections', { award: award.id, reason: 'duplicate photo' }, CARRIAGE_KEY)).status).toBe(401);
     expect((await t.call('POST', '/v1/corrections', { award: award.id, reason: '' }, ADMIN)).status).toBe(400);
+  });
+
+  it('refuses a page size out of range', async () => {
+    expect((await t.call('GET', '/v1/people/k-amina/awards?limit=500')).status).toBe(400);
   });
 
   it('pages the history, newest first', async () => {
@@ -61,6 +68,8 @@ describe('T-07 history, download and corrections', () => {
     await t.call('POST', '/v1/corrections', { award: award.id, reason: 'duplicate photo' }, ADMIN);
     const res = await t.call('GET', '/v1/people/k-amina/export');
     expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toBe('attachment; filename="kiungo-points-k-amina.json"');
+    expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.json.data.awards.map((a: any) => a.points)).toEqual([10, 50, -50]);
     expect(res.json.data.standing).toMatchObject({ kiungoId: 'k-amina', total: 10 });
     expect(res.json.data.note).toMatch(/no cash value/);

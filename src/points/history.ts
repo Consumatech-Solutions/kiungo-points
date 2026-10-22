@@ -26,6 +26,7 @@ export async function history(db: Db, kiungoId: string, page: { limit: number; b
 }
 
 /** Every line in a member's notebook, oldest first, for them to download. */
+// shortcut: loads the whole record at once; stream it in pages once a member's record passes ~10,000 lines.
 export async function allAwards(db: Db, kiungoId: string): Promise<Line[]> {
   return (await db.query<Row>(`${SELECT} WHERE kiungo_id = $1 ORDER BY id`, [kiungoId])).map(line);
 }
@@ -39,13 +40,13 @@ export type Correction = { line: Line } | { error: 'unknown_award' | 'already_co
 export async function correct(db: Db, awardId: number, reason: string): Promise<Correction> {
   return db.tx(async (tx) => {
     const [a] = await tx.query<{ points: number; corrects: string | null }>(
-      'SELECT points, corrects FROM awards WHERE id = $1 FOR UPDATE', [awardId],
-    );
+      'SELECT points, corrects FROM awards WHERE id = $1', [awardId],
+    ); // two corrections at once are settled by the unique `corrects` column, below
     if (!a) return { error: 'unknown_award' };
     if (a.corrects !== null || a.points <= 0) return { error: 'not_correctable' };
     const [row] = await tx.query<Row>(
       `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step, reason, corrects)
-       SELECT NULL, kiungo_id, quest_id, quest_version, -points, quest_line, step, $2, id FROM awards WHERE id = $1
+       SELECT entry_id, kiungo_id, quest_id, quest_version, -points, quest_line, step, $2, id FROM awards WHERE id = $1
        ON CONFLICT (corrects) DO NOTHING
        RETURNING id, quest_id AS quest, points, step, reason, entry_id AS entry, corrects, awarded_at AS at`,
       [awardId, `correction: ${reason}`],

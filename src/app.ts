@@ -73,8 +73,9 @@ export function createApp({ db, identity, adminKey, limit }: Deps) {
     return name;
   };
 
-  // A member's points, for a carriage the member has allowed to read them.
+  // A member's points, for a carriage the member has allowed to read them. Never cached on the way.
   const memberFor = async (c: Context): Promise<{ id: string; carriage: string } | Response> => {
+    c.header('cache-control', 'private, no-store');
     const id = KIUNGO_ID.safeParse(c.req.param('kiungoId'));
     if (!id.success) return c.json(error('invalid_kiungo_id', 'Use letters, digits, - and _, up to 64.'), 400);
     const carriage = await carriageOf(c);
@@ -119,7 +120,7 @@ export function createApp({ db, identity, adminKey, limit }: Deps) {
       const result = await earned(db, entry, m.id);
       return c.json({ data: { ...result, ...(await standing(db, identity, m.id)) } });
     }
-    const page = z.object({ limit: z.coerce.number().int().min(1).max(100).default(20), before: z.coerce.number().int().positive().optional() })
+    const page = z.object({ limit: z.coerce.number().int().min(1).max(100).default(10), before: z.coerce.number().int().positive().optional() })
       .safeParse(c.req.query());
     if (!page.success) return c.json(error('invalid_request', 'limit is 1 to 100; before is an award id.'), 400);
     const { lines, next } = await history(db, m.id, page.data);

@@ -36,7 +36,7 @@ export async function setup({ limit = Infinity } = {}) {
       headers: { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: res.status, json: (await res.json()) as any };
+    return { status: res.status, headers: Object.fromEntries(res.headers), json: (await res.json()) as any };
   };
 
   await call('POST', '/standin/carriages',
