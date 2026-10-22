@@ -5,10 +5,10 @@ import type { ActivityEntry, IdentityPlug, Person, Trust } from '../plugs';
 export function standinIdentity(db: Db): IdentityPlug {
   return {
     async lookup(kiungoId) {
-      const [p] = await db.query<{ kiungo_id: string; trust: Trust; timezone: string }>(
-        'SELECT kiungo_id, trust, timezone FROM standin_people WHERE kiungo_id = $1', [kiungoId],
+      const [p] = await db.query<{ kiungo_id: string; trust: Trust; timezone: string; units: string[] }>(
+        'SELECT kiungo_id, trust, timezone, units FROM standin_people WHERE kiungo_id = $1', [kiungoId],
       );
-      return p ? ({ kiungoId: p.kiungo_id, trust: p.trust, timezone: p.timezone } satisfies Person) : null;
+      return p ? ({ kiungoId: p.kiungo_id, trust: p.trust, timezone: p.timezone, units: p.units } satisfies Person) : null;
     },
     async allows(kiungoId, reader) {
       const rows = await db.query(

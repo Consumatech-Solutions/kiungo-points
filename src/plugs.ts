@@ -6,6 +6,7 @@ export interface Person {
   kiungoId: string;
   trust: Trust;
   timezone: string;
+  units: string[]; // the community units they belong to
 }
 
 /** Identity plug: who a Kiungo ID is, and what they allow. */

@@ -48,7 +48,15 @@ export const QuestDraft = z.discriminatedUnion('template', [
     watches: z.array(KIND).min(1),
     milestones: z.array(z.object({ weeks: positive('weeks'), points: positive('Every milestone\'s points') }).strict()).min(1),
   }).strict(),
-  z.object({ ...common, template: z.literal('mission') }).strict(),
+  z.object({
+    ...common,
+    template: z.literal('mission'),
+    unit: z.string().regex(/^[a-z0-9_-]{1,64}$/),
+    watches: z.array(KIND).min(1),
+    target: positive('target'),
+    period: z.enum(['once', 'weekly', 'monthly']),
+    points: positive('points'),
+  }).strict(),
 ]);
 export type QuestDraft = z.infer<typeof QuestDraft>;
 
@@ -101,7 +109,11 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
         watches: d.watches, target: weeks.at(-1)!, period: 'once', period_limit: null, each_item: null, points: null, steps: d.milestones,
       } };
     }
-    case 'mission':
-      return { reason: 'The mission template is not yet available.' };
+    case 'mission': {
+      if (unique(d.watches)) return { reason: `${unique(d.watches)} is watched twice.` };
+      // AMU's mission check: a shared goal needs at least two contributions.
+      if (d.target < 2) return { reason: 'A mission\'s target must be at least 2: it is a shared goal.' };
+      return { version: { watches: d.watches, target: d.target, period: d.period, period_limit: null, each_item: null, points: d.points, steps: null } };
+    }
   }
 }

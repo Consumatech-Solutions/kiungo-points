@@ -131,14 +131,6 @@ describe('T-02 the quest board and templates', () => {
     expect(item.json.error.message).toMatch(/target of 1/);
   });
 
-  it('says the Mission template is not yet available', async () => {
-    const res = await t.call('POST', '/v1/quests', {
-      id: 'm.test', title: 'Test', questLine: 'local', template: 'mission', trustNeeded: 'joined',
-    }, ADMIN);
-    expect(res.status).toBe(400);
-    expect(res.json.error.message).toMatch(/not yet available/);
-  });
-
   it('keeps a draft off the board until it is put live, then shows it', async () => {
     const drafted = await t.call('POST', '/v1/quests', tomato, ADMIN);
     expect(drafted.status).toBe(201);

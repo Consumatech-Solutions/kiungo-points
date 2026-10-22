@@ -8,9 +8,29 @@ export async function liveQuests(db: Db) {
             v.version, v.watches, v.target, v.period, v.period_limit AS "limit", v.each_item AS "eachItem",
             v.points, v.steps, v.trust_needed AS "trustNeeded", v.evidence
        FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-      WHERE q.status = 'live' AND v.valid_from <= now()
+      WHERE q.status = 'live' AND v.valid_from <= now() AND q.unit IS NULL
       ORDER BY v.quest_id, v.version DESC`,
   );
+}
+
+/** A unit's live quests and missions, with each mission's shared count this period. */
+export async function unitQuests(db: Db, unit: string, periodOf: (period: string) => string) {
+  const quests = await db.query<{ quest: string; title: string; template: string; target: number; period: string; points: number }>(
+    `SELECT DISTINCT ON (v.quest_id) v.quest_id AS quest, v.title, q.template, v.target, v.period, v.points
+       FROM quest_versions v JOIN quests q ON q.id = v.quest_id
+      WHERE q.status = 'live' AND v.valid_from <= now() AND q.unit = $1
+      ORDER BY v.quest_id, v.version DESC`,
+    [unit],
+  );
+  const out = [];
+  for (const q of quests) {
+    const period = periodOf(q.period);
+    const [m] = await db.query<{ count: number; paid_at: Date | null }>(
+      'SELECT count, paid_at FROM mission_progress WHERE quest_id = $1 AND unit = $2 AND period_key = $3', [q.quest, unit, period],
+    );
+    out.push({ ...q, period, progress: m?.count ?? 0, done: !!m?.paid_at });
+  }
+  return out;
 }
 
 export type DraftResult = { quest: string; version: number; status: string } | { reason: string };
@@ -21,15 +41,15 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
   if ('reason' in compiled) return compiled;
   const v = compiled.version;
   return db.tx(async (tx) => {
-    const [q] = await tx.query<{ status: string; template: string; quest_line: string; building: boolean }>(
-      `INSERT INTO quests (id, quest_line, status, template, building) VALUES ($1, $2, 'draft', $3, $4)
-       ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template, quest_line, building`,
-      [d.id, d.questLine, d.template, d.building],
+    const [q] = await tx.query<{ status: string; template: string; quest_line: string; building: boolean; unit: string | null }>(
+      `INSERT INTO quests (id, quest_line, status, template, building, unit) VALUES ($1, $2, 'draft', $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template, quest_line, building, unit`,
+      [d.id, d.questLine, d.template, d.building, 'unit' in d ? d.unit : null],
     );
     if (q!.status === 'ended') return { reason: 'This quest has ended. Draft it under a new id.' };
     if (q!.template !== d.template) return { reason: `This quest is a ${q!.template} quest; a new version keeps its template.` };
-    if (q!.quest_line !== d.questLine || q!.building !== d.building) {
-      return { reason: 'A new version keeps the quest line and whether it counts as building. Draft a new quest to change them.' };
+    if (q!.quest_line !== d.questLine || q!.building !== d.building || q!.unit !== ('unit' in d ? d.unit : null)) {
+      return { reason: 'A new version keeps the quest line, its unit and whether it counts as building. Draft a new quest to change them.' };
     }
     const [row] = await tx.query<{ version: number }>(
       `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence)
