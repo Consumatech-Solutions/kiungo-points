@@ -11,7 +11,8 @@
 3. Identity plug: a person's units.
 4. `templates.ts`: the Mission template (unit, watches, target, period, points) with its checks.
 5. `progress.ts`: a mission entry from a unit member locks the unit's counter, notes the contributor, and on the entry that reaches the target pays every contributor in the same transaction.
-6. `GET /v1/units/:unitId/quests` (any carriage): the unit's live quests and this period's progress. The core board stays core quests only.
+6. `GET /v1/units/:unitId/standing` (any carriage, TRD §5): the unit's live quests, and each mission's stage this period (0 to 4 quarters, never the raw count: `activities.md` §8 keeps numbers hidden until the founder switches the live count on). The core board stays core quests only.
+7. Missions, like streaks, count only entries read within 14 days of when they happened (QA review).
 
 ## Test seams
 

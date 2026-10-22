@@ -5,8 +5,8 @@ import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rul
 
 export { NEVER_EARNS }; // the Quests board refuses to draft quests for these
 
-// A streak counts an entry only if it is read within 14 days of when it happened.
-const STREAK_WINDOW_MS = 14 * 86_400_000;
+// Streaks and missions count an entry only if it is read within 14 days of when it happened.
+const RECENT_WINDOW_MS = 14 * 86_400_000;
 const CLOCK_SLACK_MS = 3_600_000; // a phone's clock may run a little ahead
 
 export interface Award { quest: string; points: number; step?: string }
@@ -82,14 +82,15 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         continue;
       }
       if (missingItem && q.template !== 'repeat') continue;
+      const age = now.getTime() - Date.parse(entry.occurredAt);
+      const recentOnly = q.template === 'streak' || q.template === 'mission';
+      if (recentOnly && (age > RECENT_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
+        await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run, or fills a mission, after the fact or ahead of it
+        continue;
+      }
       if (q.template === 'mission') {
         const paid = await contribute(tx, q, entry, periodKey(entry.occurredAt, q.period, person.timezone));
         if (paid) result.awards.push({ quest: q.quest_id, points: q.points!, step: paid });
-        continue;
-      }
-      const age = now.getTime() - Date.parse(entry.occurredAt);
-      if (q.template === 'streak' && (age > STREAK_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
-        await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run after the fact, or ahead of it
         continue;
       }
       if (q.evidence && !entry.evidence) {
@@ -140,10 +141,8 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
   });
 }
 
-/**
- * Adds one contribution to a unit's mission. The entry that reaches the target pays every contributor
- * this period, once, in the same transaction. Returns the period paid, if this member was paid now.
- */
+// One contribution to a unit's mission. The entry that reaches the target pays every contributor this period,
+// once, in the same transaction; returns the period paid if this member was paid now.
 async function contribute(tx: Db, q: LiveQuest, entry: ActivityEntry, period: string): Promise<string | null> {
   await tx.query(
     'INSERT INTO mission_progress (quest_id, unit, period_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',

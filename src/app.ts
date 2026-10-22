@@ -6,7 +6,7 @@ import { allAwards, correct, history } from './points/history';
 import { periodKey, type Period } from './points/periods';
 import { earned, questProgress } from './points/progress';
 import { standing } from './points/standing';
-import { draftQuest, liveQuests, setStatus, unitQuests } from './quests/board';
+import { draftQuest, liveQuests, setStatus, unitStanding } from './quests/board';
 import { QuestDraft } from './quests/templates';
 import { bearer, CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from './http';
 import { carriageFor, sha256, setCarriage } from './readers';
@@ -100,15 +100,16 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     return c.json({ data: { name: body.data.name, active: body.data.active } }, 201);
   });
 
-  // A unit's quests and missions with their shared progress: counts only, never who contributed.
-  app.get('/v1/units/:unitId/quests', async (c) => {
+  // A unit's quests and missions, shown in stages: never who contributed, never the raw count (TRD §5).
+  app.get('/v1/units/:unitId/standing', async (c) => {
     const unit = UNIT.safeParse(c.req.param('unitId'));
     if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
     const carriage = await carriageOf(c);
     if (carriage instanceof Response) return carriage;
     // shortcut: periods use Kinshasa time; a unit's own time zone arrives with the identity rail (T-12).
-    const at = now().toISOString();
-    return c.json({ data: await unitQuests(db, unit.data, (p) => periodKey(at, p as Period, 'Africa/Kinshasa')) });
+    const at = now();
+    const quests = await unitStanding(db, unit.data, at, (p) => periodKey(at.toISOString(), p as Period, 'Africa/Kinshasa'));
+    return c.json({ data: { unit: unit.data, quests } });
   });
 
   app.get('/v1/people/:kiungoId/standing', async (c) => {

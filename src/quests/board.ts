@@ -13,24 +13,28 @@ export async function liveQuests(db: Db) {
   );
 }
 
-/** A unit's live quests and missions, with each mission's shared count this period. */
-export async function unitQuests(db: Db, unit: string, periodOf: (period: string) => string) {
-  const quests = await db.query<{ quest: string; title: string; template: string; target: number; period: string; points: number }>(
+/**
+ * A unit's live quests and missions. A mission shows its stage this period (0 to 4 quarters of the way,
+ * 4 when done), never the raw count, until the founder switches the live count on (activities.md §8).
+ */
+export async function unitStanding(db: Db, unit: string, at: Date, periodOf: (period: string) => string) {
+  const quests = await db.query<{ quest: string; title: string; template: string; target: number; period: string; points: number | null }>(
     `SELECT DISTINCT ON (v.quest_id) v.quest_id AS quest, v.title, q.template, v.target, v.period, v.points
        FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-      WHERE q.status = 'live' AND v.valid_from <= now() AND q.unit = $1
+      WHERE q.status = 'live' AND v.valid_from <= $2 AND q.unit = $1
       ORDER BY v.quest_id, v.version DESC`,
-    [unit],
+    [unit, at.toISOString()],
   );
-  const out = [];
-  for (const q of quests) {
+  const missions = await db.query<{ quest_id: string; period_key: string; count: number; paid_at: Date | null }>(
+    'SELECT quest_id, period_key, count, paid_at FROM mission_progress WHERE unit = $1', [unit],
+  );
+  return quests.map(({ target, ...q }) => {
+    if (q.template !== 'mission') return { ...q, stage: null, done: null };
     const period = periodOf(q.period);
-    const [m] = await db.query<{ count: number; paid_at: Date | null }>(
-      'SELECT count, paid_at FROM mission_progress WHERE quest_id = $1 AND unit = $2 AND period_key = $3', [q.quest, unit, period],
-    );
-    out.push({ ...q, period, progress: m?.count ?? 0, done: !!m?.paid_at });
-  }
-  return out;
+    const m = missions.find((r) => r.quest_id === q.quest && r.period_key === period);
+    const done = !!m?.paid_at;
+    return { ...q, period, stage: done ? 4 : Math.min(3, Math.floor((4 * (m?.count ?? 0)) / target)), done };
+  });
 }
 
 export type DraftResult = { quest: string; version: number; status: string } | { reason: string };

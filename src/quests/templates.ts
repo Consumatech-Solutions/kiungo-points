@@ -1,5 +1,6 @@
 // Quest templates and their checks. Adapted from the AMU engine's compiler (packages/core/src/compile.ts, ADR-002).
 import { z } from 'zod';
+import { UNIT } from '../http';
 import { NEVER_EARNS } from '../points/progress';
 
 const KIND = z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/, 'Use lower-case words joined by dots, e.g. need.shopping_list.');
@@ -51,7 +52,10 @@ export const QuestDraft = z.discriminatedUnion('template', [
   z.object({
     ...common,
     template: z.literal('mission'),
-    unit: z.string().regex(/^[a-z0-9_-]{1,64}$/),
+    questLine: z.literal('local'), // mission bonuses are local points, under the quarter cap
+    building: z.literal(false).default(false),
+    evidence: z.never().optional(), // a mission counts what the unit does; evidence belongs on the activity's own quest
+    unit: UNIT,
     watches: z.array(KIND).min(1),
     target: positive('target'),
     period: z.enum(['once', 'weekly', 'monthly']),
