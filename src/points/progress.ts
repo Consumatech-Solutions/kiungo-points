@@ -35,10 +35,11 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     );
     if (fresh.length === 0) return earned(tx, entry.entryId); // already read: same answer again
 
+    // shortcut: Repeat quests only; Collect, Steps and Streak progress arrive in T-03 and T-03b.
     const quests = await tx.query<LiveQuest>(
       `SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, v.target, v.period, v.points, v.trust_needed, q.quest_line
          FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-        WHERE q.status = 'live' AND v.watches = $1 AND v.valid_from <= $2
+        WHERE q.status = 'live' AND q.template = 'repeat' AND $1 = ANY(v.watches) AND v.valid_from <= $2
         ORDER BY v.quest_id, v.version DESC`,
       [entry.kind, entry.occurredAt],
     );
