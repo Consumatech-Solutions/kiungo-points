@@ -47,8 +47,8 @@ describe('T-10 marks', () => {
     expect((await t.act('k-amina', 'picture.name', AT, 'a-name')).awards).toEqual([{ quest: 'picture.name', points: 5 }]); // given once
   });
 
-  // PGlite runs one transaction at a time; on PostgreSQL the unique mark decides who is first.
-  it('gives a first to one member only when two arrive at once', async () => {
+  // A smoke test: PGlite runs one transaction at a time, so this can't race; on PostgreSQL the unique mark decides who is first.
+  it('gives a first to one member only when two arrive at once (smoke test)', async () => {
     await join('k-amina', '2027-01-15T08:00:00Z', { country: 'GH' });
     await join('k-kofi', '2027-01-15T08:00:00Z', { country: 'GH' });
     await Promise.all([t.act('k-amina', 'picture.look', AT, 'a'), t.act('k-kofi', 'picture.look', AT, 'k')]);
@@ -56,10 +56,26 @@ describe('T-10 marks', () => {
     expect(holders).toHaveLength(1);
   });
 
-  it('shows when each mark was given', async () => {
+  it('dates the Founding member mark from the day the member joined', async () => {
     await join('k-amina', '2027-01-15T08:00:00Z');
-    const [m] = (await t.call('GET', '/v1/people/k-amina/standing')).json.data.marks;
-    expect(m.mark).toBe('founding_member');
-    expect(Date.parse(m.givenAt)).not.toBeNaN();
+    expect((await t.call('GET', '/v1/people/k-amina/standing')).json.data.marks).toEqual([{ mark: 'founding_member', givenAt: '2027-01-15T08:00:00.000Z' }]);
+  });
+
+  it('stores nothing about a member who has not allowed Kiungo, even when a carriage reads their standing', async () => {
+    await t.call('POST', '/standin/people', { kiungoId: 'k-kofi', trust: 'joined', timezone: 'Africa/Accra', allows: ['kiungo.test'], joinedAt: '2027-01-15T08:00:00Z', country: 'GH' }, ADMIN);
+    await t.call('GET', '/v1/people/k-kofi/standing');
+    expect(await t.db.query('SELECT 1 FROM marks WHERE kiungo_id = $1', ['k-kofi'])).toEqual([]);
+  });
+
+  it('stops paying a first while its quest is paused', async () => {
+    await t.call('POST', '/v1/quests/first.country/pause', undefined, ADMIN);
+    await join('k-amina', '2027-01-15T08:00:00Z', { country: 'CD' });
+    expect((await t.act('k-amina', 'picture.look', AT, 'a')).awards).toEqual([{ quest: 'picture.look', points: 10 }]);
+  });
+
+  it('counts language firsts for the first three languages a member speaks', async () => {
+    await join('k-polyglot', '2027-01-15T08:00:00Z', { languages: ['ln', 'fr', 'sw', 'en', 'yo'] });
+    const res = await t.act('k-polyglot', 'picture.look', AT, 'p');
+    expect(res.awards.filter((a: any) => a.quest === 'first.language').map((a: any) => a.step)).toEqual(['fr', 'ln', 'sw']);
   });
 });

@@ -138,7 +138,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         await notPaid(q, d.reason);
       }
     }
-    result.awards.push(...(await giveMarks(tx, person, entry.entryId)));
+    result.awards.push(...(await giveMarks(tx, person, entry.entryId, entry.occurredAt)));
     return result;
   });
 }
