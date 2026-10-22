@@ -48,11 +48,11 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
     const [q] = await tx.query<{ status: string; template: string; quest_line: string; building: boolean; unit: string | null }>(
       `INSERT INTO quests (id, quest_line, status, template, building, unit) VALUES ($1, $2, 'draft', $3, $4, $5)
        ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template, quest_line, building, unit`,
-      [d.id, d.questLine, d.template, d.building, 'unit' in d ? d.unit : null],
+      [d.id, d.questLine, d.template, d.building, d.unit ?? null],
     );
     if (q!.status === 'ended') return { reason: 'This quest has ended. Draft it under a new id.' };
     if (q!.template !== d.template) return { reason: `This quest is a ${q!.template} quest; a new version keeps its template.` };
-    if (q!.quest_line !== d.questLine || q!.building !== d.building || q!.unit !== ('unit' in d ? d.unit : null)) {
+    if (q!.quest_line !== d.questLine || q!.building !== d.building || q!.unit !== (d.unit ?? null)) {
       return { reason: 'A new version keeps the quest line, its unit and whether it counts as building. Draft a new quest to change them.' };
     }
     const [row] = await tx.query<{ version: number }>(
@@ -71,6 +71,12 @@ const NEXT: Record<'live' | 'pause' | 'end', { to: string; from: string[] }> = {
   pause: { to: 'paused', from: ['live'] },
   end: { to: 'ended', from: ['draft', 'live', 'paused'] },
 };
+
+/** The unit a quest belongs to (null for a core quest), or undefined if there is no such quest. */
+export async function questUnit(db: Db, id: string): Promise<string | null | undefined> {
+  const [q] = await db.query<{ unit: string | null }>('SELECT unit FROM quests WHERE id = $1', [id]);
+  return q ? q.unit : undefined;
+}
 
 /**
  * Puts a quest live, pauses it or ends it. Putting live (or resuming a paused quest) also puts
