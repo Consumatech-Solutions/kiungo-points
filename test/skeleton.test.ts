@@ -21,7 +21,7 @@ describe('T-01 walking skeleton', () => {
     expect(res.json.data.awards).toEqual([{ quest: PHONE, points: 10 }]);
     expect(res.json.data.total).toBe(10);
     expect(res.json.data.level).toBe('Seed');
-    expect(res.json.data.next).toEqual({ level: 'Sprout', pointsToGo: 90 });
+    expect(res.json.data.next).toEqual({ level: 'Sprout', pointsToGo: 90, alsoNeeds: [] });
 
     const standing = await t.call('GET', '/v1/people/k-amina/standing');
     expect(standing.json.data).toMatchObject({ total: 10, level: 'Seed' });

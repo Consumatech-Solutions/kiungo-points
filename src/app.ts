@@ -53,7 +53,7 @@ export function createApp({ db, identity, adminKey }: Deps) {
   app.get('/v1/people/:kiungoId/standing', async (c) => {
     const id = KIUNGO_ID.safeParse(c.req.param('kiungoId'));
     if (!id.success) return c.json(error('invalid_kiungo_id', 'Use letters, digits, - and _, up to 64.'), 400);
-    return c.json({ data: await standing(db, id.data) });
+    return c.json({ data: await standing(db, identity, id.data) });
   });
 
   app.get('/v1/people/:kiungoId/quests', async (c) => {
@@ -68,7 +68,7 @@ export function createApp({ db, identity, adminKey }: Deps) {
     const entry = c.req.query('entry');
     if (!entry) return c.json(error('entry_required', 'Add ?entry=<entry id>. The full history arrives in T-07.'), 400);
     const result = await earned(db, entry);
-    return c.json({ data: { ...result, ...(await standing(db, c.req.param('kiungoId'))) } });
+    return c.json({ data: { ...result, ...(await standing(db, identity, c.req.param('kiungoId'))) } });
   });
 
   // ---- Stand-in rails (ADR-003). Removed in T-12. ----
@@ -131,7 +131,7 @@ export function createApp({ db, identity, adminKey }: Deps) {
     }
     const entry = await writeEntry(db, carriage.name, body.data);
     const result = await takeEntry(db, identity, entry);
-    return c.json({ data: { ...result, ...(await standing(db, entry.kiungoId)) } }, 201);
+    return c.json({ data: { ...result, ...(await standing(db, identity, entry.kiungoId)) } }, 201);
   });
 
   return app;
