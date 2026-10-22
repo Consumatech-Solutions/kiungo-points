@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Db } from './db';
 import type { IdentityPlug } from './plugs';
-import { earned, takeEntry } from './points/progress';
+import { isValidTimezone } from './points/periods';
+import { earned, questProgress, takeEntry } from './points/progress';
 import { standing } from './points/standing';
 import { draftQuest, liveQuests, setStatus } from './quests/board';
 import { QuestDraft } from './quests/templates';
@@ -55,6 +56,12 @@ export function createApp({ db, identity, adminKey }: Deps) {
     return c.json({ data: await standing(db, id.data) });
   });
 
+  app.get('/v1/people/:kiungoId/quests', async (c) => {
+    const id = KIUNGO_ID.safeParse(c.req.param('kiungoId'));
+    if (!id.success) return c.json(error('invalid_kiungo_id', 'Use letters, digits, - and _, up to 64.'), 400);
+    return c.json({ data: await questProgress(db, id.data) });
+  });
+
   app.get('/v1/people/:kiungoId/awards', async (c) => {
     const entry = c.req.query('entry');
     if (!entry) return c.json(error('entry_required', 'Add ?entry=<entry id>. The full history arrives in T-07.'), 400);
@@ -69,7 +76,7 @@ export function createApp({ db, identity, adminKey }: Deps) {
     const body = z.object({
       kiungoId: KIUNGO_ID,
       trust: z.enum(['joined', 'vouched', 'verified']),
-      timezone: z.string().min(1),
+      timezone: z.string().refine(isValidTimezone, 'Use a time zone name such as Africa/Kinshasa.'),
       allows: z.array(z.string()).default([]),
     }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json(error('invalid_request', body.error.message), 400);
@@ -110,6 +117,8 @@ export function createApp({ db, identity, adminKey }: Deps) {
       kind: z.string().min(1),
       occurredAt: z.string().datetime({ offset: true }),
       key: z.string().min(1).max(200),
+      item: z.string().min(1).max(200).optional(),
+      evidence: z.string().min(1).max(200).optional(),
     }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json(error('invalid_request', body.error.message), 400);
     if (!carriage.may_write.includes(body.data.kind)) {

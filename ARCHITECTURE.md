@@ -7,7 +7,7 @@ Full detail: the TRD in [`kiungo-africa-site/docs/gamification/engine/trd.md`](h
 | Module | What it does | Interface | Hides | Where |
 |---|---|---|---|---|
 | Quests | The board of quests, every version kept | `liveQuests`, `draftQuest`, `setStatus` | versioning, drafts, the template checks | `src/quests/` |
-| Progress | Turns an activity entry into progress and awards | `takeEntry` | already-read check, permission, trust, limits, locking, the notebook | `src/points/progress.ts` |
+| Progress | Turns an activity entry into progress and awards | `takeEntry`, `questProgress` | already-read check, permission, trust, periods and limits (`periods.ts`), the per-template decision (`rules.ts`), locking, the notebook | `src/points/` |
 | Standing | Where a person stands | `standing`, `earned` | counting rules, levels | `src/points/standing.ts` |
 | Identity and Activity plugs | The way to the rail | `IdentityPlug`, `ActivityEntry` | where answers come from | `src/plugs.ts` |
 | Stand-in rails | Temporary rails until T-12 | `/standin/*` | | `src/standin/` |
