@@ -1,6 +1,6 @@
 // Quest templates and their checks. Adapted from the AMU engine's compiler (packages/core/src/compile.ts, ADR-002).
 import { z } from 'zod';
-import { NEVER_EARNS } from '../points/rules';
+import { NEVER_EARNS } from '../points/progress';
 
 const KIND = z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/, 'Use lower-case words joined by dots, e.g. need.shopping_list.');
 const positive = (label: string) => z.number().int().refine((n) => n > 0, `${label} must be a positive number.`)
@@ -12,7 +12,7 @@ const common = {
   questLine: z.enum(['picture', 'needs', 'offers', 'business', 'invites', 'sharing', 'building', 'local']),
   trustNeeded: z.enum(['joined', 'vouched', 'verified']),
   building: z.boolean().default(false),
-  evidence: z.enum(['sale_code', 'photo']).optional(),
+  evidence: z.enum(['sale_code']).optional(), // photo evidence (confirmed by a vouched member) arrives with local challenges, T-09
 };
 
 const step = z.object({

@@ -15,7 +15,7 @@ export const ADMIN = 'test-admin-key';
 export const CARRIAGE_KEY = 'my-kiungo-test-key-000000000000';
 /** A test carriage that may write every kind of activity on the board, and a few that are not. */
 export const ANY_KEY = 'any-kind-test-key-0000000000000';
-const EXTRA_KINDS = ['vouch.given', 'payment.sent', 'tomato.planted', 'tomato.checked_in', 'tomato.harvested'];
+const EXTRA_KINDS = ['vouch.given', 'payment.sent', 'purchase.made', 'tomato.planted', 'tomato.checked_in', 'tomato.harvested'];
 
 /** A fresh database with every migration applied, and the app on top of it. */
 export async function setup() {

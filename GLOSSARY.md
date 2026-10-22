@@ -20,3 +20,5 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Streak** | *Keep it up*: weeks running in which a person said what they need. Bonus only | |
 | **Run** | A streak's weeks so far. One missed week is forgiven; two in a row start a new run | chain |
 | **Milestone** | A run length that pays: 4, 12 and 26 weeks | badge |
+| **Evidence** | What a quest needs to see before it pays, such as a sale code. A reference, never the thing itself | proof of purchase |
+| **Never earns** | Vouching, paying money and buying anything: never paid, whatever quests exist. Carriages name these kinds `vouch.…`, `payment.…`, `purchase.…` | |

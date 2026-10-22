@@ -3,6 +3,8 @@ import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Trust 
 import { periodKey, periodOrdinal, type Period } from './periods';
 import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rules';
 
+export { NEVER_EARNS }; // the Quests board refuses to draft quests for these
+
 export interface Award { quest: string; points: number; step?: string }
 export interface NotAwarded { quest: string | null; reason: string }
 export interface EntryResult { entry: string; awards: Award[]; notAwarded: NotAwarded[] }

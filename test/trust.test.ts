@@ -34,8 +34,24 @@ describe('T-04 trust and never-earns', () => {
     expect(await t.act('k-kofi', 'vouch.given', AT, 'v1', { item: 'k-amina' })).toEqual(vouch);
   });
 
-  it('never pays for paying money', async () => {
+  it('never pays for paying money or buying anything', async () => {
     expect((await t.act('k-amina', 'payment.sent', AT, 'pay1')).notAwarded).toEqual([{ quest: null, reason: 'never_earns' }]);
+    expect((await t.act('k-amina', 'purchase.made', AT, 'buy1')).notAwarded).toEqual([{ quest: null, reason: 'never_earns' }]);
+  });
+
+  it('leaves no progress behind when trust is too low, so the same piece pays once the member is vouched', async () => {
+    await t.act('k-amina', 'build.translation_reviewed', AT, 'r1', { item: 'piece-7' });
+    await t.person('k-amina', 'vouched');
+    expect((await t.act('k-amina', 'build.translation_reviewed', AT, 'r2', { item: 'piece-7' })).awards)
+      .toEqual([{ quest: 'build.translation_reviewed', points: 15 }]);
+  });
+
+  it('refuses photo evidence until local challenges can have photos confirmed', async () => {
+    const res = await t.call('POST', '/v1/quests', {
+      id: 'build.photo', title: 'Test', questLine: 'building', template: 'repeat', watches: ['build.photo'],
+      target: 1, period: 'weekly', limit: 1, points: 5, trustNeeded: 'joined', evidence: 'photo',
+    }, ADMIN);
+    expect(res.status).toBe(400);
   });
 
   it('refuses a Testify rating without a sale code, pays one with it, once per sale code', async () => {

@@ -30,7 +30,7 @@ export interface Seen {
   weekNo: number; // the same week as a number, for streaks
 }
 
-/** Vouching, paying money and buying anything never earn points (activities.md, rules across every quest line). */
+// Vouching, paying money and buying anything never earn points (activities.md, rules across every quest line).
 export const NEVER_EARNS = /^(vouch|payment|purchase)\./;
 
 const LIMIT_REASON: Record<string, string> = {
