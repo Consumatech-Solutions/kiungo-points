@@ -135,7 +135,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     c.header('content-disposition', `attachment; filename="kiungo-points-${m.id}.json"`);
     return c.json({ data: {
       note: 'Your Kiungo points record. Points have no cash value.',
-      exportedAt: new Date().toISOString(),
+      exportedAt: now().toISOString(),
       standing: await standing(db, identity, m.id),
       awards: await allAwards(db, m.id),
     } });

@@ -54,7 +54,7 @@ export async function setup({ limit = Infinity } = {}) {
   const person = (kiungoId: string, trust = 'joined', timezone = 'Africa/Kinshasa', allows = ['kiungo-points', 'kiungo.test']) =>
     call('POST', '/standin/people', { kiungoId, trust, timezone, allows }, ADMIN);
 
-  /** Sets the time the points system reads entries at (null for the real time). */
+  // Sets the time the points system reads entries at (null for the real time).
   const setNow = (at: string | null) => { clock = at === null ? null : new Date(at); };
 
   return { pg, db, call, act, person, setNow };
