@@ -44,7 +44,7 @@ describe('T-16 rating with a written comment', () => {
   });
 
   const paidComments = async (id = 'k-amina') =>
-    ((await t.call('GET', `/v1/people/${id}/awards`)).json.data as any[]).filter((l) => l.quest === COMMENT && l.points > 0);
+    ((await t.call('GET', `/v1/people/${id}/awards`)).json.data as { quest: string; points: number; entry: string }[]).filter((l) => l.quest === COMMENT && l.points > 0);
 
   it('pays a comment that arrived before its rating as soon as the rating pays', async () => {
     const early = await comment('sale-881', 'c1');

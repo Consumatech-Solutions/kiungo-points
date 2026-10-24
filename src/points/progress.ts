@@ -114,8 +114,8 @@ async function applyQuest(tx: Db, person: Person, entry: ActivityEntry, q: LiveQ
     // The same lock the quest it follows takes below, so an entry and the one it waits for are read one after the other.
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.after_quest]);
   }
-  if (q.each_item === 'ever') {
-    // "Once per item, ever" reads other periods' rows, so lock the whole quest for this member.
+  if (q.each_item) {
+    // Once per item reads the member's earlier rows (other periods too), and a quest that follows this one waits on this lock.
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.quest_id]);
   }
   const key = q.template === 'repeat' ? periodKey(entry.occurredAt, q.period, person.timezone) : 'once';
@@ -171,7 +171,7 @@ async function payWaiting(tx: Db, person: Person, paidQuest: string, item: strin
        FROM awards a JOIN entries_read e ON e.entry_id = a.entry_id
       WHERE a.kiungo_id = $1 AND a.item = $2 AND a.points = 0 AND a.reason = 'needs_earlier_quest'
         AND EXISTS (SELECT 1 FROM quest_versions v WHERE v.quest_id = a.quest_id AND v.version = a.quest_version AND v.after_quest = $3)
-        AND NOT EXISTS (SELECT 1 FROM awards l WHERE l.entry_id = a.entry_id AND l.quest_id = a.quest_id AND l.id > a.id)
+        AND NOT EXISTS (SELECT 1 FROM awards l WHERE l.kiungo_id = a.kiungo_id AND l.entry_id = a.entry_id AND l.quest_id = a.quest_id AND l.id > a.id)
       ORDER BY a.id`,
     [person.kiungoId, item, paidQuest],
   );

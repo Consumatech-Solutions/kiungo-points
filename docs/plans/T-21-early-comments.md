@@ -59,7 +59,7 @@
 
 - [ ] **Step 4: The shared lock**
 
-  In `applyQuest`, for a quest with `after_quest`, take `pg_advisory_xact_lock(hashtext(kiungoId || '/' || after_quest))` before reading `afterPaid`. That is the same key the followed quest already takes (it's paid once per item, `each_item = 'ever'`, and T-16 refuses `after` on any other kind). So a comment and its rating for one member are read one after the other, never side by side.
+  In `applyQuest`, for a quest with `after_quest`, take `pg_advisory_xact_lock(hashtext(kiungoId || '/' || after_quest))` before reading `afterPaid`. That is the same key the followed quest already takes (T-16 lets a quest follow only one paid once per item, and every such quest takes its own lock). So a comment and its rating for one member are read one after the other, never side by side.
 
 - [ ] **Step 5: Implement `payWaiting`**
 
