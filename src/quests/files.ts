@@ -74,7 +74,8 @@ export function checkQuestFile(f: QuestFile): string | null {
 
 /**
  * Loads quest files into the database, all or nothing. New quests and new versions are added; a status change is
- * applied, except that an ended quest stays ended; so is a change to whether it counts as a building activity. Refused: a version already published that differs from its file
+ * applied, except that an ended quest stays ended. A quest can start counting as a building activity, never stop
+ * (members keep credit for what they've done). Refused: a version already published that differs from its file
  * (a change is always a new version), and a new version dated before activity already read for the quest (the past
  * is never rewritten). Returns what changed, in words.
  */
@@ -88,6 +89,7 @@ export async function loadQuests(db: Db, files: QuestFile[]): Promise<string[]> 
     for (const f of files) {
       const [before] = await tx.query<{ status: string; building: boolean }>('SELECT status, building FROM quests WHERE id = $1', [f.id]);
       if (before?.status === 'ended' && f.status !== 'ended') throw new Error(`${f.id} has ended, and an ended quest stays ended.`);
+      if (before?.building && !f.building) throw new Error(`${f.id} counts as a building activity, and can't stop: members keep credit for what they've done.`);
       const [q] = await tx.query<{ quest_line: string; template: string; unit: string | null }>(
         `INSERT INTO quests (id, quest_line, status, template, building) VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, building = EXCLUDED.building RETURNING quest_line, template, unit`,
@@ -97,7 +99,7 @@ export async function loadQuests(db: Db, files: QuestFile[]): Promise<string[]> 
         throw new Error(`${f.id}: its quest line and template can't change; make a new quest instead.`);
       }
       if (before && before.status !== f.status) changed.push(`${f.id} is now ${f.status}`);
-      if (before && before.building !== f.building) changed.push(`${f.id} ${f.building ? 'now counts' : 'no longer counts'} as a building activity`);
+      if (before && before.building !== f.building) changed.push(`${f.id} now counts as a building activity`);
       for (const v of f.versions) {
         const [row] = await tx.query<{ same: boolean; valid_from: Date | null }>(
           `SELECT valid_from, (title, watches, target, period, period_limit, each_item, points, trust_needed, evidence)

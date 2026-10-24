@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { loadQuests, QuestFile } from '../src/quests/files';
 import { setup } from './helpers';
+
+const files = () => readdirSync('quests').filter((f) => f.endsWith('.json')).map((f) => QuestFile.parse(JSON.parse(readFileSync(`quests/${f}`, 'utf8'))));
 
 // Week 2026-W44: Monday 26 October to Sunday 1 November, after lessons started earning (24 October 2026).
 const day = (d: number, h = 9) => new Date(Date.UTC(2026, 9, 26 + d, h)).toISOString();
@@ -37,6 +41,13 @@ describe('T-15 academy lessons', () => {
     const course = await t.act('k-kofi', 'business.course_completed', day(1), 'c1', { item: 'course-1' });
     expect(course.awards).toEqual([{ quest: 'business.course_completed', points: 50 }]); // unchanged
     expect(course.level).toBe('Fruit');
+  });
+
+  it('switches the course on as a building activity in a database that already has it, and never back off', async () => {
+    await t.db.query("UPDATE quests SET building = false WHERE id = 'business.course_completed'"); // as deployed before this change
+    expect(await loadQuests(t.db, files())).toEqual(['business.course_completed now counts as a building activity']);
+    const off = files().map((f) => (f.id === 'business.course_completed' ? { ...f, building: false } : f));
+    await expect(loadQuests(t.db, off)).rejects.toThrow(/can't stop: members keep credit/);
   });
 
   it('keeps the course, on-time and franchise points as they were', async () => {
