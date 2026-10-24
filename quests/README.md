@@ -6,7 +6,7 @@ Every core quest is a file here, named after the quest (`need.shopping_list.json
 
 1. Add a **new version** at the end of its `versions` list, with the next number and the date it takes effect (`validFrom`). Never edit a version already published: the loader refuses that, so the past is never rewritten.
 2. Open a pull request. Once the founder approves and merges it, the change is public and dated.
-3. Load it: `npm run load-quests`, with `DATABASE_URL` set to the database's connection address from your database provider (founder only). A new version's date must still be ahead when it is loaded, so activity from before it always keeps the old rules. If anything is wrong, nothing is changed and the message says which file.
+3. Load it: `npm run load-quests`, with `DATABASE_URL` set to the database's connection address from your database provider (founder only). A new version can't be dated back over activity already counted, so activity always keeps the rules it was counted under. If anything is wrong, nothing is changed and the message says which file.
 
 To pause or end a quest, change its `status` to `paused` or `ended`. Ending is for good: an ended quest can't come back (make a new quest instead).
 

@@ -27,16 +27,21 @@ describe('T-14 quests as public files', () => {
 
   it('puts a new version in force from its date, and not before', async () => {
     const soon = withVersion('need.shopping_list', (v) => ({ ...v, validFrom: '2026-10-01T00:00:00Z', limit: 3 }));
-    expect(await loadQuests(t.db, soon, new Date('2026-09-01'))).toEqual(['need.shopping_list v2 added, in force from 2026-10-01T00:00:00Z']);
+    expect(await loadQuests(t.db, soon)).toEqual(['need.shopping_list v2 added, in force from 2026-10-01T00:00:00Z']);
     expect((await board()).find((q) => q.quest === 'need.shopping_list')).toMatchObject({ version: 2, limit: 3 });
 
     await loadQuests(t.db, withVersion('share.post', (v) => ({ ...v, validFrom: '2099-01-01T00:00:00Z', points: 6 })));
     expect((await board()).find((q) => q.quest === 'share.post')).toMatchObject({ version: 1, points: 5 }); // not yet
   });
 
-  it('refuses a new version dated in the past, so old activity never gets new rules', async () => {
+  it('refuses a new version dated back over activity already read, so old activity never gets new rules', async () => {
+    await t.person('k-amina');
+    t.setNow('2026-03-02T00:00:00Z');
+    await t.act('k-amina', 'share.post', '2026-03-01T09:00:00Z', 's1');
     await expect(loadQuests(t.db, withVersion('share.post', (v) => ({ ...v, validFrom: '2026-02-01T00:00:00Z', points: 6 }))))
-      .rejects.toThrow(/already passed/);
+      .rejects.toThrow(/activity from then on has already been read/);
+    expect(await loadQuests(t.db, withVersion('share.post', (v) => ({ ...v, validFrom: '2026-03-02T00:00:00Z', points: 6 }))))
+      .toHaveLength(1); // from after that activity, it's fine
   });
 
   it('keeps an ended quest ended', async () => {

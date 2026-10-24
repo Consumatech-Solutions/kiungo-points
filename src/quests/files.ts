@@ -75,10 +75,10 @@ export function checkQuestFile(f: QuestFile): string | null {
 /**
  * Loads quest files into the database, all or nothing. New quests and new versions are added; a status change is
  * applied, except that an ended quest stays ended. Refused: a version already published that differs from its file
- * (a change is always a new version), and a new version dated before `now` (the past is never rewritten).
- * Returns what changed, in words.
+ * (a change is always a new version), and a new version dated before activity already read for the quest (the past
+ * is never rewritten). Returns what changed, in words.
  */
-export async function loadQuests(db: Db, files: QuestFile[], now = new Date()): Promise<string[]> {
+export async function loadQuests(db: Db, files: QuestFile[]): Promise<string[]> {
   for (const f of files) {
     const reason = checkQuestFile(f);
     if (reason) throw new Error(reason);
@@ -111,9 +111,15 @@ export async function loadQuests(db: Db, files: QuestFile[], now = new Date()): 
           if (!row.same) throw new Error(`${f.id} v${v.version} differs from what was published; add a new version instead.`);
           continue;
         }
-        if (Date.parse(v.validFrom) < now.getTime()) {
-          throw new Error(`${f.id} v${v.version} starts ${v.validFrom}, which has already passed; give it a date from now on.`);
-        }
+        // Activity already read from that date on was judged by the old rules; a new version can't reach back over it.
+        const [touched] = await tx.query(
+          `SELECT 1 WHERE EXISTS (SELECT 1 FROM entries_read e JOIN quest_versions p ON p.quest_id = $1
+                                   WHERE e.kind = ANY(p.watches || $2::text[]) AND e.occurred_at >= $3)
+                       OR EXISTS (SELECT 1 FROM awards a JOIN entries_read e ON e.entry_id = a.entry_id
+                                   WHERE a.quest_id = $1 AND e.occurred_at >= $3)`,
+          [f.id, v.watches, v.validFrom],
+        );
+        if (touched) throw new Error(`${f.id} v${v.version} starts ${v.validFrom}, but activity from then on has already been read; give it a date from now on.`);
         await tx.query(
           `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps,
                                        trust_needed, evidence, valid_from)

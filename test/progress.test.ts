@@ -77,8 +77,7 @@ describe('T-03 progress and limits', () => {
     // v2 of the file stops watching offer.saved, from 2099 (loaded as if today were before then)
     const files = readdirSync('quests').filter((f) => f.endsWith('.json')).map((f) => QuestFile.parse(JSON.parse(readFileSync(`quests/${f}`, 'utf8'))));
     await loadQuests(t.db, files.map((f) => f.id !== 'offer.saved' ? f
-      : { ...f, versions: [...f.versions, { ...f.versions[0]!, version: 2, validFrom: '2099-01-01T00:00:00Z', watches: ['offer.updated'] }] }),
-    new Date('2026-01-02'));
+      : { ...f, versions: [...f.versions, { ...f.versions[0]!, version: 2, validFrom: '2099-01-01T00:00:00Z', watches: ['offer.updated'] }] }));
     expect((await t.act('k-amina', 'offer.saved', TUE, 'o-old')).awards).toEqual([{ quest: 'offer.saved', points: 20 }]); // v1 was in force
     await t.person('k-kofi');
     expect((await t.act('k-kofi', 'offer.saved', LATER, 'o-new')).awards).toEqual([]); // v2 no longer watches it
