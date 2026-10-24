@@ -1,7 +1,7 @@
 // The quest board as files (quests/*.json): every change to a quest is a reviewed, dated pull request (T-14).
 import { z } from 'zod';
 import type { Db } from '../db';
-import { compileQuest, QuestDraft, type QuestVersion } from './templates';
+import { compileQuest, MONEY_WORDS, QuestDraft, type QuestVersion } from './templates';
 
 const Version = z.object({
   version: z.number().int().positive(),
@@ -50,6 +50,7 @@ export function checkQuestFile(f: QuestFile): string | null {
   for (const [i, v] of f.versions.entries()) {
     if (v.version !== i + 1) return `${f.id}: versions must be numbered 1, 2, 3… in order.`;
     if (i > 0 && Date.parse(v.validFrom) <= Date.parse(f.versions[i - 1]!.validFrom)) return `${f.id}: each version starts after the one before.`;
+    if (MONEY_WORDS.test(v.title)) return `${f.id} v${v.version}: the title hints that points are worth money; points have no cash value.`;
     if (f.questLine === 'firsts') {
       // given by the points system itself (T-10), never by watching activity
       if (v.watches.length || v.points === null || v.period !== 'once') return `${f.id} v${v.version}: a first watches nothing, pays once, and has points.`;

@@ -120,6 +120,15 @@ describe('T-02 the quest board and templates', () => {
     expect(res.json.error.message).toMatch(/2 different/);
   });
 
+  it('refuses a quest whose title hints points are worth money, whoever drafts it', async () => {
+    for (const title of ['Invest in your unit', 'Grow peppers for cash value', 'Earn money with tomatoes', 'Collect coins']) {
+      const res = await t.call('POST', '/v1/quests', { ...tomato, title }, ADMIN);
+      expect(res.status).toBe(400);
+      expect(res.json.error.message).toMatch(/no cash value/);
+    }
+    expect((await t.call('POST', '/v1/quests', { ...tomato, title: 'Share your harvest with your unit' }, ADMIN)).status).toBe(201);
+  });
+
   it('refuses a Steps quest that repeats a step', async () => {
     const res = await t.call('POST', '/v1/quests', {
       ...tomato, steps: [{ kind: 'tomato.planted', points: 20 }, { kind: 'tomato.planted', points: 5 }],

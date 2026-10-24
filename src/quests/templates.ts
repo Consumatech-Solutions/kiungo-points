@@ -68,6 +68,9 @@ export type QuestDraft = z.infer<typeof QuestDraft>;
 
 const LOCAL_MAX = 50;
 
+/** Words that would hint points are worth money (CLAUDE.md; strategy map, kiungo-africa-site PR #45). No quest may use them. */
+export const MONEY_WORDS = /\b(tokens?|coins?|invest\w*|returns?|shares|ownership|stakes?|earn(s|ing)? money|cash value|cash out|redeem\w*)\b/i;
+
 /** The quest as stored in one version row. */
 export interface QuestVersion {
   watches: string[]; target: number; period: string; period_limit: number | null;
@@ -80,6 +83,8 @@ export interface QuestVersion {
  */
 export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reason: string } {
   const unique = (xs: string[]) => xs.find((x, i) => xs.indexOf(x) !== i);
+  const money = d.title.match(MONEY_WORDS);
+  if (money) return { reason: `"${money[0]}" hints that points are worth money; points have no cash value. Reword the title.` };
   const watched = 'watches' in d ? d.watches as string[] : 'steps' in d ? (d.steps as { kind: string }[]).map((s) => s.kind) : [];
   const unpaid = watched.find((k) => NEVER_EARNS.test(k));
   if (unpaid) return { reason: `${unpaid} never earns points: vouching, paying and buying are never rewarded.` };
