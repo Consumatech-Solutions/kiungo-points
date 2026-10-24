@@ -14,6 +14,6 @@ Write each version out in full, exactly as it runs (for example a weekly quest's
 
 ## Fields
 
-`questLine` and `template` (repeat, collect, steps, streak) can't change once published. `building` (counts as a building activity for Fruit) can be switched on by pull request, never off, so members keep credit for what they've done. It changes only through these files. Each version has: `title`, `watches` (the kinds of activity it counts), `target`, `period` (once, daily, weekly, monthly, quarterly), `limit` (times it pays per period), `eachItem` (`ever` or `per_period`: once per survey, course, shop…), `points`, `steps` (a challenge's stages, or a streak's milestones), `trustNeeded` and `evidence`.
+`questLine` and `template` (repeat, collect, steps, streak) can't change once published. `building` (counts as a building activity for Fruit) can be switched on by pull request, never off, so members keep credit for what they've done. It changes only through these files. Each version has: `title`, `watches` (the kinds of activity it counts), `target`, `period` (once, daily, weekly, monthly, quarterly), `limit` (times it pays per period), `eachItem` (`ever` or `per_period`: once per survey, course, shop…), `points`, `steps` (a challenge's stages, or a streak's milestones), `trustNeeded`, `evidence`, and optionally `after`: another quest it follows, paying for an item only once that quest has paid for the same item (a comment on a verified rating pays only after the rating has).
 
 Points have no cash value.

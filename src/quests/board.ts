@@ -6,7 +6,7 @@ export async function liveQuests(db: Db) {
   return db.query(
     `SELECT DISTINCT ON (v.quest_id) v.quest_id AS quest, v.title, q.quest_line AS "questLine", q.template,
             v.version, v.watches, v.target, v.period, v.period_limit AS "limit", v.each_item AS "eachItem",
-            v.points, v.steps, v.trust_needed AS "trustNeeded", v.evidence
+            v.points, v.steps, v.trust_needed AS "trustNeeded", v.evidence, v.after_quest AS "after"
        FROM quest_versions v JOIN quests q ON q.id = v.quest_id
       WHERE q.status = 'live' AND v.valid_from <= now() AND q.unit IS NULL
       ORDER BY v.quest_id, v.version DESC`,
@@ -45,6 +45,10 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
   if ('reason' in compiled) return compiled;
   const v = compiled.version;
   return db.tx(async (tx) => {
+    if (v.after_quest) {
+      const reason = await followable(tx, v.after_quest);
+      if (reason) return { reason };
+    }
     const [q] = await tx.query<{ status: string; template: string; quest_line: string; building: boolean; unit: string | null }>(
       `INSERT INTO quests (id, quest_line, status, template, building, unit) VALUES ($1, $2, 'draft', $3, $4, $5)
        ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template, quest_line, building, unit`,
@@ -56,11 +60,11 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
       return { reason: 'A new version keeps the quest line, its unit and whether it counts as building. Draft a new quest to change them.' };
     }
     const [row] = await tx.query<{ version: number }>(
-      `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence)
-       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11 FROM quest_versions WHERE quest_id = $1
+      `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence, after_quest)
+       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12 FROM quest_versions WHERE quest_id = $1
        RETURNING version`,
       [d.id, d.title, v.watches, v.target, v.period, v.period_limit, v.each_item, v.points,
-        v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded, d.evidence ?? null],
+        v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded, d.evidence ?? null, v.after_quest],
     );
     return { quest: d.id, version: row!.version, status: q!.status };
   });
@@ -71,6 +75,16 @@ const NEXT: Record<'live' | 'pause' | 'end', { to: string; from: string[] }> = {
   pause: { to: 'paused', from: ['live'] },
   end: { to: 'ended', from: ['draft', 'live', 'paused'] },
 };
+
+/** Why a quest can't be followed (it doesn't exist, or isn't paid once per item), or null if it can. */
+export async function followable(db: Db, id: string): Promise<string | null> {
+  const [v] = await db.query<{ each_item: string | null }>(
+    'SELECT each_item FROM quest_versions WHERE quest_id = $1 AND valid_from IS NOT NULL ORDER BY version DESC LIMIT 1', [id],
+  );
+  if (!v) return `There is no quest ${id} to follow.`;
+  if (!v.each_item) return `${id} isn't paid once per item, so a quest can't follow it.`;
+  return null;
+}
 
 /** The unit a quest belongs to (null for a core quest), or undefined if there is no such quest. */
 export async function questUnit(db: Db, id: string): Promise<string | null | undefined> {
