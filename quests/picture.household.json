@@ -1,0 +1,25 @@
+{
+  "id": "picture.household",
+  "questLine": "picture",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Your household",
+      "watches": [
+        "picture.household"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": null,
+      "points": 10,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
 import { periodKey } from '../src/points/periods';
+import { loadQuests, QuestFile } from '../src/quests/files';
 import { ADMIN, setup } from './helpers';
 
 // Week 2026-W43 runs Monday 19 to Sunday 25 October, in Kinshasa time (UTC+1).
@@ -72,11 +74,10 @@ describe('T-03 progress and limits', () => {
   });
 
   it('pays by the version in force: a new version that stops watching a kind pays nothing for it', async () => {
-    await t.call('POST', '/v1/quests', {
-      id: 'offer.saved', title: 'Say what you can offer', questLine: 'offers', template: 'repeat',
-      watches: ['offer.updated'], target: 1, period: 'once', points: 20, trustNeeded: 'joined',
-    }, ADMIN);
-    await t.call('POST', '/v1/quests/offer.saved/live', undefined, ADMIN);
+    // v2 of the file stops watching offer.saved, from 2099 (loaded as if today were before then)
+    const files = readdirSync('quests').filter((f) => f.endsWith('.json')).map((f) => QuestFile.parse(JSON.parse(readFileSync(`quests/${f}`, 'utf8'))));
+    await loadQuests(t.db, files.map((f) => f.id !== 'offer.saved' ? f
+      : { ...f, versions: [...f.versions, { ...f.versions[0]!, version: 2, validFrom: '2099-01-01T00:00:00Z', watches: ['offer.updated'] }] }));
     expect((await t.act('k-amina', 'offer.saved', TUE, 'o-old')).awards).toEqual([{ quest: 'offer.saved', points: 20 }]); // v1 was in force
     await t.person('k-kofi');
     expect((await t.act('k-kofi', 'offer.saved', LATER, 'o-new')).awards).toEqual([]); // v2 no longer watches it

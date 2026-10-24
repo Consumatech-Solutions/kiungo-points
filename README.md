@@ -27,6 +27,6 @@ Tests run against PGlite, a PostgreSQL that runs inside the test process, so not
 
 ## Set-up (founder only)
 
-1. Create a managed PostgreSQL database and run the files in `migrations/` in order.
+1. Create a managed PostgreSQL database and run the files in `migrations/` in order. Then load the quest board: `npm run load-quests`, with `DATABASE_URL` set to the database (see `quests/README.md`).
 2. In the Cloudflare dashboard, create a Hyperdrive for it and put its id in `wrangler.jsonc`.
 3. Set the `ADMIN_KEY` secret in the Cloudflare dashboard: at least 24 characters (a shorter key switches admin off). Never in code or chat.

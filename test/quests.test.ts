@@ -118,6 +118,15 @@ describe('T-02 the quest board and templates', () => {
     expect(res.json.error.message).toMatch(/2 different/);
   });
 
+  it('refuses a quest whose title hints points are worth money, whoever drafts it', async () => {
+    for (const title of ['Invest in your unit', 'Grow peppers for cash value', 'Earn money with tomatoes', 'Collect coins']) {
+      const res = await t.call('POST', '/v1/quests', { ...tomato, title }, ADMIN);
+      expect(res.status).toBe(400);
+      expect(res.json.error.message).toMatch(/no cash value/);
+    }
+    expect((await t.call('POST', '/v1/quests', { ...tomato, title: 'Share your harvest with your unit' }, ADMIN)).status).toBe(201);
+  });
+
   it('refuses a Steps quest that repeats a step', async () => {
     const res = await t.call('POST', '/v1/quests', {
       ...tomato, steps: [{ kind: 'tomato.planted', points: 20 }, { kind: 'tomato.planted', points: 5 }],
@@ -147,16 +156,15 @@ describe('T-02 the quest board and templates', () => {
     expect((await board()).find((q) => q.quest === 'local.tomato')).toMatchObject({ template: 'steps', steps: tomato.steps.map((s) => expect.objectContaining(s)) });
   });
 
-  it('adds a new version without changing the live one until it goes live', async () => {
-    const draft = await t.call('POST', '/v1/quests', {
-      id: 'need.shopping_list', title: 'Share your shopping list', questLine: 'needs', template: 'repeat',
-      watches: ['need.shopping_list'], target: 1, period: 'weekly', limit: 3, points: 10, trustNeeded: 'joined',
-    }, ADMIN);
+  it('adds a new version of a local quest without changing the live one until it goes live', async () => {
+    await t.call('POST', '/v1/quests', tomato, ADMIN);
+    await t.call('POST', '/v1/quests/local.tomato/live', undefined, ADMIN);
+    const draft = await t.call('POST', '/v1/quests', { ...tomato, title: 'The tomato challenge, season 2' }, ADMIN);
     expect(draft.json.data).toMatchObject({ version: 2, status: 'live' });
-    expect((await board()).find((q) => q.quest === 'need.shopping_list')).toMatchObject({ version: 1, limit: 2 });
+    expect((await board()).find((q) => q.quest === 'local.tomato')).toMatchObject({ version: 1 });
 
-    await t.call('POST', '/v1/quests/need.shopping_list/live', undefined, ADMIN);
-    expect((await board()).find((q) => q.quest === 'need.shopping_list')).toMatchObject({ version: 2, limit: 3 });
+    await t.call('POST', '/v1/quests/local.tomato/live', undefined, ADMIN);
+    expect((await board()).find((q) => q.quest === 'local.tomato')).toMatchObject({ version: 2, title: 'The tomato challenge, season 2' });
   });
 
   it('takes a paused quest off the board, and an ended quest cannot come back', async () => {
@@ -177,12 +185,10 @@ describe('T-02 the quest board and templates', () => {
   });
 
   it('refuses a new version that changes the quest line', async () => {
-    const res = await t.call('POST', '/v1/quests', {
-      id: 'share.post', title: 'Share a Kiungo post', questLine: 'building', template: 'repeat',
-      watches: ['share.post'], target: 1, period: 'weekly', limit: 2, points: 5, trustNeeded: 'joined',
-    }, ADMIN);
+    await t.call('POST', '/v1/quests', tomato, ADMIN);
+    const res = await t.call('POST', '/v1/quests', { ...tomato, questLine: 'local', unit: 'matete' }, ADMIN);
     expect(res.status).toBe(400);
-    expect(res.json.error.message).toMatch(/quest line/);
+    expect(res.json.error.message).toMatch(/quest line, its unit/);
   });
 
   it('a live Steps quest pays its step alongside the other quests watching the same kind', async () => {

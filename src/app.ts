@@ -8,7 +8,7 @@ import { earned, questProgress } from './points/progress';
 import { flags, reviewFlag, setSpikeSettings, spikeSettings } from './points/spikes';
 import { standing } from './points/standing';
 import { draftQuest, liveQuests, questUnit, setStatus, unitStanding } from './quests/board';
-import { QuestDraft } from './quests/templates';
+import { compileQuest, QuestDraft } from './quests/templates';
 import { bearer, CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from './http';
 import { carriageFor, sha256, setCarriage } from './readers';
 import { standinRoutes } from './standin/routes';
@@ -57,6 +57,12 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
   const draftAnswer = async (c: Context, raw: unknown) => {
     const body = QuestDraft.safeParse(raw);
     if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);
+    const compiled = compileQuest(body.data);
+    if ('reason' in compiled) return c.json(error('invalid_quest', compiled.reason), 400);
+    // Core quests are public files (quests/, T-14): changed only by a reviewed pull request, never through the API.
+    if (body.data.questLine !== 'local' && !body.data.unit) {
+      return c.json(error('core_quest_by_file', 'Core quests change by file, in a pull request (see quests/README.md).'), 400);
+    }
     const result = await draftQuest(db, body.data);
     if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
     return c.json({ data: result }, 201);

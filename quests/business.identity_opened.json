@@ -1,0 +1,25 @@
+{
+  "id": "business.identity_opened",
+  "questLine": "business",
+  "template": "repeat",
+  "building": true,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Start or bring in your business",
+      "watches": [
+        "business.identity_opened"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": "ever",
+      "points": 100,
+      "steps": null,
+      "trustNeeded": "vouched",
+      "evidence": null
+    }
+  ]
+}

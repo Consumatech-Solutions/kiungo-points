@@ -1,0 +1,25 @@
+{
+  "id": "build.mistake_fixed",
+  "questLine": "building",
+  "template": "repeat",
+  "building": true,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Report a mistake that gets fixed",
+      "watches": [
+        "build.mistake_fixed"
+      ],
+      "target": 1,
+      "period": "monthly",
+      "limit": 5,
+      "eachItem": "ever",
+      "points": 10,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "streak.need_weekly",
+  "questLine": "needs",
+  "template": "streak",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Keep it up",
+      "watches": [
+        "need.shopping_list",
+        "need.bought_week",
+        "need.bought_month",
+        "need.service_rated",
+        "need.survey",
+        "need.close_to_home",
+        "need.community_question"
+      ],
+      "target": 26,
+      "period": "once",
+      "limit": null,
+      "eachItem": null,
+      "points": null,
+      "steps": [
+        {
+          "weeks": 4,
+          "points": 20
+        },
+        {
+          "weeks": 12,
+          "points": 50
+        },
+        {
+          "weeks": 26,
+          "points": 100
+        }
+      ],
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

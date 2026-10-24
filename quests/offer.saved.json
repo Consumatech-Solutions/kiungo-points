@@ -1,0 +1,25 @@
+{
+  "id": "offer.saved",
+  "questLine": "offers",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Say what you can offer",
+      "watches": [
+        "offer.saved"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": null,
+      "points": 20,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

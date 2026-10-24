@@ -10,6 +10,7 @@ The Kiungo points system. Read `README.md`, `ARCHITECTURE.md` and `GLOSSARY.md` 
 - **Everything under `src/standin/` and the `standin_*` tables is temporary** and is removed in T-12. Nothing outside it may depend on it except through the plugs in `src/plugs.ts`.
 - **Not live for real members** until the identity and activity rails exist.
 - Migrations are numbered SQL files in `migrations/`, applied in order.
+- **Core quests live in `quests/*.json`** (T-14), not in migrations. A change is a new version with its date, never an edit to a published one.
 
 <!-- consumatech-stack v2 -->
 ## How this repo is built (Consumatech stack)

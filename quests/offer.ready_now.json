@@ -1,0 +1,25 @@
+{
+  "id": "offer.ready_now",
+  "questLine": "offers",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Say what you have ready now",
+      "watches": [
+        "offer.ready_now"
+      ],
+      "target": 1,
+      "period": "weekly",
+      "limit": 2,
+      "eachItem": null,
+      "points": 5,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}
