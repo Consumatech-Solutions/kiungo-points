@@ -23,6 +23,6 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Evidence** | What a quest needs to see before it pays, such as a sale code. A reference, never the thing itself | proof of purchase |
 | **Never earns** | Vouching, paying money and buying anything: never paid, whatever quests exist. Carriages name these kinds `vouch.…`, `payment.…`, `purchase.…` | |
 | **Reader** | A carriage (or Kiungo's points system itself, `kiungo-points`) that a member allows to read something of theirs | client, consumer |
-| **Mark** | A lasting recognition: Founding member (joined before 1 January 2030), or first in a unit, country or language | badge, achievement |
+| **Mark** | A lasting recognition: Founding member (joined before 1 January 2030), or first in a unit, country or language (a first is freed for the next member if its award is corrected) | badge, achievement |
 | **Flag** | A note that a pattern looks unusual, for a person to review. Never a penalty | strike, ban |
 | **Follows** | A quest that pays for an item only once another quest has paid the member for the same item (`after`); until then, `needs_earlier_quest` | depends on |
