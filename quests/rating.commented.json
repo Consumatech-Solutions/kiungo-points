@@ -1,0 +1,26 @@
+{
+  "id": "rating.commented",
+  "questLine": "building",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-10-24T00:00:00.000Z",
+      "title": "Add a written comment to your verified rating",
+      "watches": [
+        "rating.commented"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": "ever",
+      "points": 5,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": "sale_code",
+      "after": "rating.verified"
+    }
+  ]
+}

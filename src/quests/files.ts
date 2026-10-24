@@ -16,6 +16,7 @@ const Version = z.object({
   steps: z.array(z.record(z.string(), z.unknown())).nullable(),
   trustNeeded: z.enum(['joined', 'vouched', 'verified']),
   evidence: z.enum(['sale_code']).nullable(),
+  after: z.string().nullable().optional(), // pays once this quest has paid for the same item (T-16)
 }).strict();
 type Version = z.infer<typeof Version>;
 
@@ -37,6 +38,7 @@ const canon = (x: unknown): string => JSON.stringify(x, (_k, v) =>
 // What a version means once compiled: the exact row the engine runs on.
 const asRow = (v: Version): QuestVersion => ({
   watches: v.watches, target: v.target, period: v.period, period_limit: v.limit, each_item: v.eachItem, points: v.points, steps: v.steps,
+  after_quest: v.after ?? null,
 });
 
 /**
@@ -60,7 +62,8 @@ export function checkQuestFile(f: QuestFile): string | null {
         : f.template === 'streak' ? { watches: v.watches, milestones: v.steps }
         : f.template === 'collect' ? { watches: v.watches, target: v.target, points: v.points }
         : { watches: v.watches, target: v.target, period: v.period, points: v.points,
-            ...(v.limit !== null && v.period !== 'once' ? { limit: v.limit } : {}), ...(v.eachItem ? { eachItem: v.eachItem } : {}) }),
+            ...(v.limit !== null && v.period !== 'once' ? { limit: v.limit } : {}), ...(v.eachItem ? { eachItem: v.eachItem } : {}),
+            ...(v.after ? { after: v.after } : {}) }),
     });
     if (!draft.success) return `${f.id} v${v.version}: ${draft.error.issues.map((x) => `${x.path.join('.')}: ${x.message}`).join(' ')}`;
     const compiled = compileQuest(draft.data);
@@ -102,12 +105,12 @@ export async function loadQuests(db: Db, files: QuestFile[]): Promise<string[]> 
       if (before && before.building !== f.building) changed.push(`${f.id} now counts as a building activity`);
       for (const v of f.versions) {
         const [row] = await tx.query<{ same: boolean; valid_from: Date | null }>(
-          `SELECT valid_from, (title, watches, target, period, period_limit, each_item, points, trust_needed, evidence)
-                    IS NOT DISTINCT FROM ($3, $4::text[], $5::int, $6, $7::int, $8, $9::int, $10, $11)
+          `SELECT valid_from, (title, watches, target, period, period_limit, each_item, points, trust_needed, evidence, after_quest)
+                    IS NOT DISTINCT FROM ($3, $4::text[], $5::int, $6, $7::int, $8, $9::int, $10, $11, $14)
                   AND steps IS NOT DISTINCT FROM $12::jsonb AND valid_from IS NOT DISTINCT FROM $13::timestamptz AS same
              FROM quest_versions WHERE quest_id = $1 AND version = $2`,
           [f.id, v.version, v.title, v.watches, v.target, v.period, v.limit, v.eachItem, v.points, v.trustNeeded, v.evidence,
-            v.steps === null ? null : JSON.stringify(v.steps), v.validFrom],
+            v.steps === null ? null : JSON.stringify(v.steps), v.validFrom, v.after ?? null],
         );
         if (row) {
           if (row.valid_from === null) throw new Error(`${f.id} v${v.version} is a draft made through the admin API; core quests change by file only.`);
@@ -125,10 +128,10 @@ export async function loadQuests(db: Db, files: QuestFile[]): Promise<string[]> 
         if (touched) throw new Error(`${f.id} v${v.version} starts ${v.validFrom}, but activity from then on has already been read; give it a date from now on.`);
         await tx.query(
           `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps,
-                                       trust_needed, evidence, valid_from)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                                       trust_needed, evidence, valid_from, after_quest)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           [f.id, v.version, v.title, v.watches, v.target, v.period, v.limit, v.eachItem, v.points,
-            v.steps === null ? null : JSON.stringify(v.steps), v.trustNeeded, v.evidence, v.validFrom],
+            v.steps === null ? null : JSON.stringify(v.steps), v.trustNeeded, v.evidence, v.validFrom, v.after ?? null],
         );
         changed.push(`${f.id} v${v.version} added, in force from ${v.validFrom}`);
       }

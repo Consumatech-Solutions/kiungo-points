@@ -18,7 +18,7 @@ export interface EntryResult { entry: string; awards: Award[]; notAwarded: NotAw
 interface LiveQuest {
   quest_id: string; version: number; template: string; target: number; period: Period; period_limit: number | null;
   each_item: string | null; points: number | null; steps: Rule['steps']; trust_needed: Trust; quest_line: string;
-  evidence: string | null; unit: string | null;
+  evidence: string | null; unit: string | null; after_quest: string | null;
 }
 
 /**
@@ -57,7 +57,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     const quests = await tx.query<LiveQuest>(
       `SELECT * FROM (
          SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
-                v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line, q.unit
+                v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line, q.unit, v.after_quest
            FROM quest_versions v JOIN quests q ON q.id = v.quest_id
           WHERE q.status = 'live' AND v.valid_from <= $2
           ORDER BY v.quest_id, v.version DESC) inforce
@@ -120,10 +120,16 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         [entry.kiungoId, q.quest_id, key, entry.item],
       )).length > 0;
 
+      // The quest it follows has paid for this item (items paid are kept in that quest's progress).
+      const afterPaid = q.after_quest !== null && entry.item !== undefined && (await tx.query(
+        'SELECT 1 FROM quest_progress WHERE kiungo_id = $1 AND quest_id = $2 AND $3 = ANY(counted)',
+        [entry.kiungoId, q.after_quest, entry.item],
+      )).length > 0;
       const d = decide(
-        { template: q.template, period: q.period, target: q.target, limit: q.period_limit, eachItem: q.each_item, points: q.points, steps: q.steps },
+        { template: q.template, period: q.period, target: q.target, limit: q.period_limit, eachItem: q.each_item, points: q.points, steps: q.steps,
+          after: q.after_quest },
         row!,
-        { kind: entry.kind, item: entry.item, itemPaidBefore, week: periodKey(entry.occurredAt, 'weekly', person.timezone),
+        { kind: entry.kind, item: entry.item, itemPaidBefore, afterPaid, week: periodKey(entry.occurredAt, 'weekly', person.timezone),
           weekNo: periodOrdinal(entry.occurredAt, 'weekly', person.timezone) },
       );
       if (d.progress !== row) {

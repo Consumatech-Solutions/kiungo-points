@@ -10,6 +10,7 @@ export interface Rule {
   points: number | null;
   // Steps: the stages. Streak: the milestones.
   steps: { kind: string; points: number; upTo: number; period: 'once' | 'weekly' }[] | { weeks: number; points: number }[] | null;
+  after?: string | null; // pays for an item only once this other quest has paid for it
 }
 
 // One quest's progress in one period. `counted` holds items paid, sections collected or steps reached.
@@ -26,6 +27,7 @@ export interface Seen {
   kind: string;
   item?: string;
   itemPaidBefore: boolean; // for eachItem 'ever': already paid in an earlier period
+  afterPaid?: boolean; // for a quest that follows another: that quest has paid for this item
   week: string; // the week the entry falls in, for weekly steps (2026-W43)
   weekNo: number; // the same week as a number, for streaks
 }
@@ -76,6 +78,7 @@ export function decide(rule: Rule, p: Progress, seen: Seen): Decision {
   if (rule.eachItem) {
     if (!seen.item) return stay('missing_item');
     if (seen.itemPaidBefore || p.counted.includes(seen.item)) return stay('already_done');
+    if (rule.after && !seen.afterPaid) return stay('needs_earlier_quest');
   }
   const limit = rule.limit ?? (rule.period === 'once' && !rule.eachItem ? 1 : Infinity);
   if (p.completions >= limit) return stay(LIMIT_REASON[rule.period]!);

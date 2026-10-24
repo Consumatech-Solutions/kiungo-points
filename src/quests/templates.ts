@@ -34,6 +34,7 @@ export const QuestDraft = z.discriminatedUnion('template', [
     period: z.enum(['once', 'daily', 'weekly', 'monthly', 'quarterly']),
     limit: positive('limit').optional(),
     eachItem: z.enum(['ever', 'per_period']).optional(),
+    after: KIND.optional(), // pays for an item only once this other quest has paid for the same item
     points: positive('points'),
   }).strict(),
   z.object({
@@ -70,7 +71,7 @@ const LOCAL_MAX = 50;
 /** The quest as stored in one version row. */
 export interface QuestVersion {
   watches: string[]; target: number; period: string; period_limit: number | null;
-  each_item: string | null; points: number | null; steps: unknown;
+  each_item: string | null; points: number | null; steps: unknown; after_quest: string | null;
 }
 
 /**
@@ -95,11 +96,12 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
       if (d.period === 'once' && d.limit) return { reason: 'A once-only quest has no limit per period.' };
       if (d.eachItem === 'per_period' && d.period === 'once') return { reason: 'Once per item per period needs a repeating period.' };
       if (d.eachItem && d.target > 1) return { reason: 'A quest paid once per item has a target of 1.' };
+      if (d.after && (!d.eachItem || d.after === d.id)) return { reason: 'A quest that follows another is paid once per item, and follows a different quest.' };
       return { version: {
         watches: d.watches, target: d.target, period: d.period,
         // a repeating quest with no limit pays once per period, unless each item pays on its own
         period_limit: d.period === 'once' ? null : d.limit ?? (d.eachItem ? null : 1),
-        each_item: d.eachItem ?? null, points: d.points, steps: null,
+        each_item: d.eachItem ?? null, points: d.points, steps: null, after_quest: d.after ?? null,
       } };
     }
     case 'collect': {
@@ -107,27 +109,28 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
       if (d.target > d.watches.length) {
         return { reason: `The target is ${d.target}, but the quest only watches ${d.watches.length} different things.` };
       }
-      return { version: { watches: d.watches, target: d.target, period: 'once', period_limit: null, each_item: null, points: d.points, steps: null } };
+      return { version: { watches: d.watches, target: d.target, period: 'once', period_limit: null, each_item: null, points: d.points, steps: null, after_quest: null } };
     }
     case 'steps': {
       const kinds = d.steps.map((s) => s.kind);
       if (unique(kinds)) return { reason: `The step ${unique(kinds)} appears twice.` };
       const repeated = d.steps.find((s) => s.upTo > 1 && s.period !== 'weekly');
       if (repeated) return { reason: `The step ${repeated.kind} can repeat only as a weekly step.` };
-      return { version: { watches: kinds, target: d.steps.length, period: 'once', period_limit: null, each_item: null, points: null, steps: d.steps } };
+      return { version: { watches: kinds, target: d.steps.length, period: 'once', period_limit: null, each_item: null, points: null, steps: d.steps, after_quest: null } };
     }
     case 'streak': {
       const weeks = d.milestones.map((m) => m.weeks);
       if (weeks.some((w, i) => i > 0 && w <= weeks[i - 1]!)) return { reason: 'Milestones must go up, each longer than the last.' };
       return { version: {
         watches: d.watches, target: weeks.at(-1)!, period: 'once', period_limit: null, each_item: null, points: null, steps: d.milestones,
+        after_quest: null,
       } };
     }
     case 'mission': {
       if (unique(d.watches)) return { reason: `${unique(d.watches)} is watched twice.` };
       // AMU's mission check: a shared goal needs at least two contributions.
       if (d.target < 2) return { reason: 'A mission\'s target must be at least 2: it is a shared goal.' };
-      return { version: { watches: d.watches, target: d.target, period: d.period, period_limit: null, each_item: null, points: d.points, steps: null } };
+      return { version: { watches: d.watches, target: d.target, period: d.period, period_limit: null, each_item: null, points: d.points, steps: null, after_quest: null } };
     }
   }
 }

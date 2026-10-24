@@ -54,6 +54,7 @@ const CORE: [string, number, string, number | null, string | null, string][] = [
   ['build.idea_taken_up', 50, 'once', null, 'ever', 'joined'],
   ['build.mistake_fixed', 10, 'monthly', 5, 'ever', 'joined'],
   ['rating.verified', 5, 'weekly', 5, 'ever', 'joined'],
+  ['rating.commented', 5, 'once', null, 'ever', 'joined'], // founder, 2026-10-24: +5 for a written comment on a verified rating
   ['rating.perception', 2, 'weekly', 10, null, 'joined'],
   ['unit.telegram_joined', 10, 'once', null, 'ever', 'joined'],
 ];
