@@ -142,8 +142,8 @@ describe('T-09 local quests', () => {
       await draft({ ...peppers(), title: 'Grow more peppers' });
       await live('k-mzee');
       expect((await drafts('k-mzee')).json.data.drafts).toEqual([]);
-      expect(await t.db.query("SELECT proposed_by FROM quest_versions WHERE quest_id = 'matete.peppers' AND version = 2"))
-        .toEqual([{ proposed_by: 'k-zawadi' }]);
+      await draft({ ...peppers(), title: 'Grow peppers again' }); // a third version shows the second as the one live
+      expect((await drafts('k-mzee')).json.data.drafts[0].live).toMatchObject({ version: 2, proposedBy: 'k-zawadi' });
     });
 
     it('shows the drafts only to a Seedkeeper of the unit', async () => {

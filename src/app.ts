@@ -139,7 +139,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const carriage = await carriageOf(c);
     if (carriage instanceof Response) return carriage;
     const id = KIUNGO_ID.safeParse(kiungoId);
-    if (!id.success) return c.json(error('invalid_kiungo_id', 'Say which member is acting, by Kiungo ID.'), 400);
+    if (!id.success) return c.json(error('invalid_kiungo_id', 'Say which member is acting, by Kiungo ID: "proposedBy" or "by" in the body, or ?by= when reading.'), 400);
     const person = await identity.lookup(id.data);
     if (!person || !person.units.includes(unit) || !(await identity.allows(id.data, carriage))) {
       return c.json(error('not_allowed', `Only a member of ${unit}, through a carriage they allow, can do this.`), 403);
