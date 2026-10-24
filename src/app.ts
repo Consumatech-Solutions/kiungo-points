@@ -7,7 +7,7 @@ import { periodKey, type Period } from './points/periods';
 import { earned, questProgress } from './points/progress';
 import { flags, reviewFlag, setSpikeSettings, spikeSettings } from './points/spikes';
 import { standing } from './points/standing';
-import { draftQuest, liveQuests, questUnit, setStatus, unitStanding } from './quests/board';
+import { draftQuest, liveQuests, questUnit, setStatus, unitDrafts, unitStanding } from './quests/board';
 import { compileQuest, QuestDraft } from './quests/templates';
 import { bearer, CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from './http';
 import { carriageFor, sha256, setCarriage } from './readers';
@@ -54,7 +54,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     }
     return c.json({ data: result });
   };
-  const draftAnswer = async (c: Context, raw: unknown) => {
+  const draftAnswer = async (c: Context, raw: unknown, proposedBy: string | null = null) => {
     const body = QuestDraft.safeParse(raw);
     if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);
     const compiled = compileQuest(body.data);
@@ -63,7 +63,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     if (body.data.questLine !== 'local' && !body.data.unit) {
       return c.json(error('core_quest_by_file', 'Core quests change by file, in a pull request (see quests/README.md).'), 400);
     }
-    const result = await draftQuest(db, body.data);
+    const result = await draftQuest(db, body.data, proposedBy);
     if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
     return c.json({ data: result }, 201);
   };
@@ -72,6 +72,15 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const ok = await admin(c);
     if (ok !== true) return ok;
     return draftAnswer(c, await c.req.json().catch(() => null));
+  });
+
+  // A unit's drafts waiting, for the admin, who puts a unit's challenges live until it has a Seedkeeper.
+  app.get('/v1/quests/drafts', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    const unit = UNIT.safeParse(c.req.query('unit'));
+    if (!unit.success) return c.json(error('invalid_unit', 'Say which unit: ?unit= lower-case letters, digits, - and _.'), 400);
+    return c.json({ data: { unit: unit.data, drafts: await unitDrafts(db, unit.data) } });
   });
 
   app.post('/v1/quests/:id/:step{live|pause|end}', async (c) => {
@@ -130,7 +139,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const carriage = await carriageOf(c);
     if (carriage instanceof Response) return carriage;
     const id = KIUNGO_ID.safeParse(kiungoId);
-    if (!id.success) return c.json(error('invalid_kiungo_id', 'Say which member is acting, by Kiungo ID.'), 400);
+    if (!id.success) return c.json(error('invalid_kiungo_id', 'Say which member is acting, by Kiungo ID: "proposedBy" or "by" in the body, or ?by= when reading.'), 400);
     const person = await identity.lookup(id.data);
     if (!person || !person.units.includes(unit) || !(await identity.allows(id.data, carriage))) {
       return c.json(error('not_allowed', `Only a member of ${unit}, through a carriage they allow, can do this.`), 403);
@@ -154,7 +163,16 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     if (typeof quest.id !== 'string' || !quest.id.startsWith(`${unit.data}.`)) {
       return c.json(error('invalid_quest', `A ${unit.data} quest's id starts with "${unit.data}.".`), 400);
     }
-    return draftAnswer(c, { ...quest, questLine: 'local', unit: unit.data });
+    return draftAnswer(c, { ...quest, questLine: 'local', unit: unit.data }, member);
+  });
+
+  // The unit's drafts waiting, for its Seedkeeper to decide.
+  app.get('/v1/units/:unitId/drafts', async (c) => {
+    const unit = UNIT.safeParse(c.req.param('unitId'));
+    if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
+    const member = await unitMember(c, unit.data, c.req.query('by'), 'Seedkeeper');
+    if (typeof member !== 'string') return member;
+    return c.json({ data: { unit: unit.data, drafts: await unitDrafts(db, unit.data) } });
   });
 
   app.post('/v1/units/:unitId/quests/:id/:step{live|pause|end}', async (c) => {

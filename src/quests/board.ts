@@ -39,8 +39,11 @@ export async function unitStanding(db: Db, unit: string, at: Date, periodOf: (pe
 
 export type DraftResult = { quest: string; version: number; status: string } | { reason: string };
 
-/** Drafts a quest, or a new version of one. Nothing changes on the board until it is put live. */
-export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
+/**
+ * Drafts a quest, or a new version of one, noting the member who proposed it (null for the admin).
+ * Nothing changes on the board until it is put live.
+ */
+export async function draftQuest(db: Db, d: QuestDraft, proposedBy: string | null = null): Promise<DraftResult> {
   const compiled = compileQuest(d);
   if ('reason' in compiled) return compiled;
   const v = compiled.version;
@@ -60,14 +63,45 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
       return { reason: 'A new version keeps the quest line, its unit and whether it counts as building. Draft a new quest to change them.' };
     }
     const [row] = await tx.query<{ version: number }>(
-      `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence, after_quest)
-       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12 FROM quest_versions WHERE quest_id = $1
+      `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence, after_quest, proposed_by)
+       SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13 FROM quest_versions WHERE quest_id = $1
        RETURNING version`,
       [d.id, d.title, v.watches, v.target, v.period, v.period_limit, v.each_item, v.points,
-        v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded, d.evidence ?? null, v.after_quest],
+        v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded, d.evidence ?? null, v.after_quest, proposedBy],
     );
     return { quest: d.id, version: row!.version, status: q!.status };
   });
+}
+
+type VersionView = {
+  version: number; title: string; watches: string[]; target: number; period: string; limit: number | null; eachItem: string | null;
+  points: number | null; steps: unknown; trustNeeded: string; evidence: string | null; after: string | null; proposedBy: string | null;
+};
+export type UnitDraft = { quest: string; template: string; status: string; live: VersionView | null; pending: VersionView[] };
+
+/**
+ * A unit's challenges with versions waiting to be put live, oldest first, each beside the version live now
+ * (null for a challenge never live), and who proposed each one.
+ */
+export async function unitDrafts(db: Db, unit: string): Promise<UnitDraft[]> {
+  const rows = await db.query<VersionView & { quest: string; template: string; status: string; drafted: boolean }>(
+    `SELECT v.quest_id AS quest, q.template, q.status, v.valid_from IS NULL AS drafted,
+            v.version, v.title, v.watches, v.target, v.period, v.period_limit AS "limit", v.each_item AS "eachItem", v.points,
+            v.steps, v.trust_needed AS "trustNeeded", v.evidence, v.after_quest AS "after", v.proposed_by AS "proposedBy"
+       FROM quest_versions v JOIN quests q ON q.id = v.quest_id
+      WHERE q.unit = $1 AND q.status <> 'ended'
+        AND EXISTS (SELECT 1 FROM quest_versions p WHERE p.quest_id = q.id AND p.valid_from IS NULL)
+      ORDER BY v.quest_id, v.version`,
+    [unit],
+  );
+  const drafts: UnitDraft[] = [];
+  for (const { quest, template, status, drafted, ...version } of rows) {
+    if (drafts.at(-1)?.quest !== quest) drafts.push({ quest, template, status, live: null, pending: [] });
+    const d = drafts.at(-1)!;
+    if (drafted) d.pending.push(version);
+    else d.live = version; // versions come in order, so the last one in force is the live one
+  }
+  return drafts;
 }
 
 const NEXT: Record<'live' | 'pause' | 'end', { to: string; from: string[] }> = {

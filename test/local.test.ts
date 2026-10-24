@@ -109,4 +109,56 @@ describe('T-09 local quests', () => {
     }, ADMIN);
     expect(res.status).toBe(400);
   });
+
+  describe('T-19 who proposed it, and the drafts waiting', () => {
+    const drafts = (by: string, unit = 'matete') => t.call('GET', `/v1/units/${unit}/drafts?by=${by}`);
+
+    it('shows the Seedkeeper a new challenge waiting, and who proposed it', async () => {
+      await draft(peppers());
+      await grow('k-mzee', ['matete'], 'Seedkeeper');
+      const res = await drafts('k-mzee');
+      expect(res.status).toBe(200);
+      expect(res.json.data.drafts).toHaveLength(1);
+      expect(res.json.data.drafts[0]).toMatchObject({ quest: 'matete.peppers', status: 'draft', live: null });
+      expect(res.json.data.drafts[0].pending).toHaveLength(1);
+      expect(res.json.data.drafts[0].pending[0]).toMatchObject({ version: 1, title: 'Grow peppers', proposedBy: 'k-zawadi' });
+    });
+
+    it('shows a new version beside the live one', async () => {
+      await draft(peppers());
+      await grow('k-mzee', ['matete'], 'Seedkeeper');
+      await live('k-mzee');
+      await draft({ ...peppers(), title: 'Grow more peppers' });
+      const [d] = (await drafts('k-mzee')).json.data.drafts;
+      expect(d.live).toMatchObject({ version: 1, title: 'Grow peppers', proposedBy: 'k-zawadi' });
+      expect(d.pending).toHaveLength(1);
+      expect(d.pending[0]).toMatchObject({ version: 2, title: 'Grow more peppers', proposedBy: 'k-zawadi' });
+    });
+
+    it('keeps who proposed a version once it is live', async () => {
+      await draft(peppers());
+      await grow('k-mzee', ['matete'], 'Seedkeeper');
+      await live('k-mzee');
+      await draft({ ...peppers(), title: 'Grow more peppers' });
+      await live('k-mzee');
+      expect((await drafts('k-mzee')).json.data.drafts).toEqual([]);
+      await draft({ ...peppers(), title: 'Grow peppers again' }); // a third version shows the second as the one live
+      expect((await drafts('k-mzee')).json.data.drafts[0].live).toMatchObject({ version: 2, proposedBy: 'k-zawadi' });
+    });
+
+    it('shows the drafts only to a Seedkeeper of the unit', async () => {
+      await draft(peppers());
+      expect((await drafts('k-zawadi')).status).toBe(403); // Fruit proposes; the Seedkeeper decides
+      await grow('k-kisenso-sk', ['kisenso'], 'Seedkeeper');
+      expect((await drafts('k-kisenso-sk')).status).toBe(403);
+    });
+
+    it("shows the admin a unit's drafts while it has no Seedkeeper", async () => {
+      await draft(peppers());
+      const res = await t.call('GET', '/v1/quests/drafts?unit=matete', undefined, ADMIN);
+      expect(res.status).toBe(200);
+      expect(res.json.data.drafts[0].pending[0]).toMatchObject({ version: 1, proposedBy: 'k-zawadi' });
+      expect((await t.call('GET', '/v1/quests/drafts?unit=matete')).status).toBe(401);
+    });
+  });
 });
