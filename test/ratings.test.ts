@@ -43,10 +43,53 @@ describe('T-16 rating with a written comment', () => {
     expect((await t.act('k-amina', COMMENT, AT, 'c1', { item: 'sale-881' })).notAwarded).toEqual([{ quest: COMMENT, reason: 'missing_evidence' }]);
   });
 
-  it('pays nothing for a comment that arrives before its rating', async () => {
-    expect((await comment('sale-881', 'c1')).notAwarded).toEqual([{ quest: COMMENT, reason: 'needs_earlier_quest' }]);
+  const paidComments = async (id = 'k-amina') =>
+    ((await t.call('GET', `/v1/people/${id}/awards`)).json.data as any[]).filter((l) => l.quest === COMMENT && l.points > 0);
+
+  it('pays a comment that arrived before its rating as soon as the rating pays', async () => {
+    const early = await comment('sale-881', 'c1');
+    expect(early.notAwarded).toEqual([{ quest: COMMENT, reason: 'needs_earlier_quest' }]);
+    const rated = await rate('sale-881', 'r1');
+    expect(rated.awards).toEqual([{ quest: RATE, points: 5 }]);
+    expect(rated.total).toBe(10);
+    expect((await paidComments()).map((l) => ({ points: l.points, entry: l.entry }))).toEqual([{ points: 5, entry: early.entry }]);
+  });
+
+  it('pays the waiting comment once, even if it is sent again', async () => {
+    await comment('sale-881', 'c1');
     await rate('sale-881', 'r1');
-    expect((await comment('sale-881', 'c2')).awards).toEqual([{ quest: COMMENT, points: 5 }]); // sent again after: it pays
+    expect((await comment('sale-881', 'c2')).notAwarded).toEqual([{ quest: COMMENT, reason: 'already_done' }]);
+    const again = await comment('sale-881', 'c1'); // the same entry delivered again
+    expect(again.awards).toEqual([{ quest: COMMENT, points: 5 }]);
+    expect(again.notAwarded).toEqual([]);
+    expect(again.total).toBe(10);
+  });
+
+  it('pays only one of two comments waiting on the same sale code', async () => {
+    await comment('sale-881', 'c1');
+    await comment('sale-881', 'c2');
+    expect((await rate('sale-881', 'r1')).total).toBe(10);
+    expect(await paidComments()).toHaveLength(1);
+  });
+
+  it("never pays another member's waiting comment", async () => {
+    await t.person('k-kofi');
+    await t.act('k-kofi', COMMENT, AT, 'k-c1', { item: 'sale-881', evidence: 'sale-881' });
+    await rate('sale-881', 'r1');
+    expect(await paidComments('k-kofi')).toEqual([]);
+  });
+
+  it('keeps a comment waiting when its rating earns nothing', async () => {
+    for (let i = 0; i < 5; i++) await rate(`sale-${i}`, `r${i}`);
+    await comment('sale-5', 'c5');
+    expect((await rate('sale-5', 'r5')).notAwarded).toEqual([{ quest: RATE, reason: 'weekly_limit' }]);
+    expect(await paidComments()).toEqual([]);
+  });
+
+  // A smoke test: PGlite runs one transaction at a time, so this can't race; on PostgreSQL the shared lock decides.
+  it('pays a comment and its rating arriving at once (smoke test)', async () => {
+    await Promise.all([comment('sale-881', 'c1'), rate('sale-881', 'r1')]);
+    expect((await t.call('GET', '/v1/people/k-amina/standing')).json.data.total).toBe(10);
   });
 
   it('pays nothing for the comment on a rating past its weekly limit, which paid nothing', async () => {
