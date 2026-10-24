@@ -2,7 +2,7 @@
   "id": "business.course_completed",
   "questLine": "business",
   "template": "repeat",
-  "building": false,
+  "building": true,
   "status": "live",
   "versions": [
     {
