@@ -5,8 +5,8 @@ import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rul
 
 export { NEVER_EARNS }; // the Quests board refuses to draft quests for these
 
-// A streak counts an entry only if it is read within 14 days of when it happened.
-const STREAK_WINDOW_MS = 14 * 86_400_000;
+// Streaks and missions count an entry only if it is read within 14 days of when it happened.
+const RECENT_WINDOW_MS = 14 * 86_400_000;
 const CLOCK_SLACK_MS = 3_600_000; // a phone's clock may run a little ahead
 
 export interface Award { quest: string; points: number; step?: string }
@@ -16,7 +16,7 @@ export interface EntryResult { entry: string; awards: Award[]; notAwarded: NotAw
 interface LiveQuest {
   quest_id: string; version: number; template: string; target: number; period: Period; period_limit: number | null;
   each_item: string | null; points: number | null; steps: Rule['steps']; trust_needed: Trust; quest_line: string;
-  evidence: string | null;
+  evidence: string | null; unit: string | null;
 }
 
 /**
@@ -54,7 +54,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     const quests = await tx.query<LiveQuest>(
       `SELECT * FROM (
          SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
-                v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line
+                v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line, q.unit
            FROM quest_versions v JOIN quests q ON q.id = v.quest_id
           WHERE q.status = 'live' AND v.valid_from <= $2
           ORDER BY v.quest_id, v.version DESC) inforce
@@ -76,14 +76,21 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     };
 
     for (const q of quests) {
+      if (q.unit && !person.units.includes(q.unit)) continue; // a unit's quests are for its members only
       if (TRUST_ORDER.indexOf(person.trust) < TRUST_ORDER.indexOf(q.trust_needed)) {
         await notPaid(q, `needs_${q.trust_needed}`);
         continue;
       }
       if (missingItem && q.template !== 'repeat') continue;
       const age = now.getTime() - Date.parse(entry.occurredAt);
-      if (q.template === 'streak' && (age > STREAK_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
-        await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run after the fact, or ahead of it
+      const recentOnly = q.template === 'streak' || q.template === 'mission';
+      if (recentOnly && (age > RECENT_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
+        await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run, or fills a mission, after the fact or ahead of it
+        continue;
+      }
+      if (q.template === 'mission') {
+        const paid = await contribute(tx, q, entry, periodKey(entry.occurredAt, q.period, person.timezone));
+        if (paid) result.awards.push({ quest: q.quest_id, points: q.points!, step: paid });
         continue;
       }
       if (q.evidence && !entry.evidence) {
@@ -132,6 +139,34 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     }
     return result;
   });
+}
+
+// One contribution to a unit's mission. The entry that reaches the target pays every contributor this period,
+// once, in the same transaction; returns the period paid if this member was paid now.
+async function contribute(tx: Db, q: LiveQuest, entry: ActivityEntry, period: string): Promise<string | null> {
+  await tx.query(
+    'INSERT INTO mission_progress (quest_id, unit, period_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    [q.quest_id, q.unit, period],
+  );
+  // The unit's counter is locked, so two last contributions can't both pay.
+  const [m] = await tx.query<{ count: number; paid_at: Date | null }>(
+    `UPDATE mission_progress SET count = count + 1 WHERE quest_id = $1 AND unit = $2 AND period_key = $3
+     RETURNING count, paid_at`,
+    [q.quest_id, q.unit, period],
+  );
+  await tx.query(
+    'INSERT INTO mission_contributors (quest_id, unit, period_key, kiungo_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+    [q.quest_id, q.unit, period, entry.kiungoId],
+  );
+  if (m!.paid_at || m!.count < q.target) return null;
+  await tx.query('UPDATE mission_progress SET paid_at = now() WHERE quest_id = $1 AND unit = $2 AND period_key = $3', [q.quest_id, q.unit, period]);
+  await tx.query(
+    `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step)
+     SELECT CASE WHEN kiungo_id = $6 THEN $5 END, kiungo_id, $1, $4, $7, $8, $3
+       FROM mission_contributors WHERE quest_id = $1 AND unit = $2 AND period_key = $3`,
+    [q.quest_id, q.unit, period, q.version, entry.entryId, entry.kiungoId, q.points, q.quest_line],
+  );
+  return period;
 }
 
 /** What an entry already earned, from the notebook. */

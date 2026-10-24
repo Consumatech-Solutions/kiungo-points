@@ -1,5 +1,6 @@
 // Quest templates and their checks. Adapted from the AMU engine's compiler (packages/core/src/compile.ts, ADR-002).
 import { z } from 'zod';
+import { UNIT } from '../http';
 import { NEVER_EARNS } from '../points/progress';
 
 const KIND = z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/, 'Use lower-case words joined by dots, e.g. need.shopping_list.');
@@ -48,7 +49,18 @@ export const QuestDraft = z.discriminatedUnion('template', [
     watches: z.array(KIND).min(1),
     milestones: z.array(z.object({ weeks: positive('weeks'), points: positive('Every milestone\'s points') }).strict()).min(1),
   }).strict(),
-  z.object({ ...common, template: z.literal('mission') }).strict(),
+  z.object({
+    ...common,
+    template: z.literal('mission'),
+    questLine: z.literal('local'), // mission bonuses are local points, under the quarter cap
+    building: z.literal(false).default(false),
+    evidence: z.never().optional(), // a mission counts what the unit does; evidence belongs on the activity's own quest
+    unit: UNIT,
+    watches: z.array(KIND).min(1),
+    target: positive('target'),
+    period: z.enum(['once', 'weekly', 'monthly']),
+    points: positive('points'),
+  }).strict(),
 ]);
 export type QuestDraft = z.infer<typeof QuestDraft>;
 
@@ -101,7 +113,11 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
         watches: d.watches, target: weeks.at(-1)!, period: 'once', period_limit: null, each_item: null, points: null, steps: d.milestones,
       } };
     }
-    case 'mission':
-      return { reason: 'The mission template is not yet available.' };
+    case 'mission': {
+      if (unique(d.watches)) return { reason: `${unique(d.watches)} is watched twice.` };
+      // AMU's mission check: a shared goal needs at least two contributions.
+      if (d.target < 2) return { reason: 'A mission\'s target must be at least 2: it is a shared goal.' };
+      return { version: { watches: d.watches, target: d.target, period: d.period, period_limit: null, each_item: null, points: d.points, steps: null } };
+    }
   }
 }

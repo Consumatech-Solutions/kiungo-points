@@ -3,11 +3,12 @@ import { z } from 'zod';
 import type { Db } from './db';
 import type { IdentityPlug } from './plugs';
 import { allAwards, correct, history } from './points/history';
+import { periodKey, type Period } from './points/periods';
 import { earned, questProgress } from './points/progress';
 import { standing } from './points/standing';
-import { draftQuest, liveQuests, setStatus } from './quests/board';
+import { draftQuest, liveQuests, setStatus, unitStanding } from './quests/board';
 import { QuestDraft } from './quests/templates';
-import { bearer, CARRIAGE_NAME, error, KIUNGO_ID } from './http';
+import { bearer, CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from './http';
 import { carriageFor, sha256, setCarriage } from './readers';
 import { standinRoutes } from './standin/routes';
 
@@ -97,6 +98,18 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
       return c.json(error('key_in_use', 'Another carriage has this key. Choose a new one.'), 409);
     }
     return c.json({ data: { name: body.data.name, active: body.data.active } }, 201);
+  });
+
+  // A unit's quests and missions, shown in stages: never who contributed, never the raw count (TRD §5).
+  app.get('/v1/units/:unitId/standing', async (c) => {
+    const unit = UNIT.safeParse(c.req.param('unitId'));
+    if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
+    const carriage = await carriageOf(c);
+    if (carriage instanceof Response) return carriage;
+    // shortcut: periods use Kinshasa time; a unit's own time zone arrives with the identity rail (T-12).
+    const at = now();
+    const quests = await unitStanding(db, unit.data, at, (p) => periodKey(at.toISOString(), p as Period, 'Africa/Kinshasa'));
+    return c.json({ data: { unit: unit.data, quests } });
   });
 
   app.get('/v1/people/:kiungoId/standing', async (c) => {

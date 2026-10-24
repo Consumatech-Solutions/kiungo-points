@@ -2,7 +2,7 @@
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { Db } from '../db';
-import { CARRIAGE_NAME, error, KIUNGO_ID } from '../http';
+import { CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from '../http';
 import type { IdentityPlug } from '../plugs';
 import { isValidTimezone } from '../points/periods';
 import { takeEntry } from '../points/progress';
@@ -28,14 +28,15 @@ export function standinRoutes(app: Hono, { db, identity, admin, carriageOf, now 
       trust: z.enum(['joined', 'vouched', 'verified']),
       timezone: z.string().refine(isValidTimezone, 'Use a time zone name such as Africa/Kinshasa.'),
       allows: z.array(z.union([CARRIAGE_NAME, z.literal('kiungo-points')])).default([]),
+      units: z.array(UNIT).default([]),
     }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json(error('invalid_request', body.error.message), 400);
     const p = body.data;
     await db.tx(async (tx) => {
       await tx.query(
-        `INSERT INTO standin_people (kiungo_id, trust, timezone) VALUES ($1, $2, $3)
-         ON CONFLICT (kiungo_id) DO UPDATE SET trust = EXCLUDED.trust, timezone = EXCLUDED.timezone`,
-        [p.kiungoId, p.trust, p.timezone],
+        `INSERT INTO standin_people (kiungo_id, trust, timezone, units) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (kiungo_id) DO UPDATE SET trust = EXCLUDED.trust, timezone = EXCLUDED.timezone, units = EXCLUDED.units`,
+        [p.kiungoId, p.trust, p.timezone, p.units],
       );
       await tx.query('DELETE FROM standin_permissions WHERE kiungo_id = $1', [p.kiungoId]);
       for (const reader of p.allows) {

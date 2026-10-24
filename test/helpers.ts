@@ -31,7 +31,7 @@ export async function setup({ limit = Infinity } = {}) {
   const app = createApp({ db, identity: standinIdentity(db), adminKey: ADMIN, limit: limiter, now: () => clock ?? new Date() });
 
   // A member's points are read as the test carriage unless a test names a key ('' for none).
-  const call = async (method: string, path: string, body?: unknown, key = path.startsWith('/v1/people/') ? ANY_KEY : undefined) => {
+  const call = async (method: string, path: string, body?: unknown, key = /^\/v1\/(people|units)\//.test(path) ? ANY_KEY : undefined) => {
     const res = await app.request(path, {
       method,
       headers: { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) },
@@ -51,8 +51,8 @@ export async function setup({ limit = Infinity } = {}) {
   const act = async (kiungoId: string, kind: string, occurredAt: string, key: string, extra: { item?: string; evidence?: string } = {}) =>
     (await call('POST', '/standin/activity', { kiungoId, kind, occurredAt, key, ...extra }, ANY_KEY)).json.data;
 
-  const person = (kiungoId: string, trust = 'joined', timezone = 'Africa/Kinshasa', allows = ['kiungo-points', 'kiungo.test']) =>
-    call('POST', '/standin/people', { kiungoId, trust, timezone, allows }, ADMIN);
+  const person = (kiungoId: string, trust = 'joined', timezone = 'Africa/Kinshasa', allows = ['kiungo-points', 'kiungo.test'], units: string[] = []) =>
+    call('POST', '/standin/people', { kiungoId, trust, timezone, allows, units }, ADMIN);
 
   // Sets the time the points system reads entries at (null for the real time).
   const setNow = (at: string | null) => { clock = at === null ? null : new Date(at); };
