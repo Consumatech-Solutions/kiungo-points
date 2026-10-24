@@ -1,5 +1,5 @@
 import type { Db } from '../db';
-import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Trust } from '../plugs';
+import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Person, type Trust } from '../plugs';
 import { periodKey, periodOrdinal, type Period } from './periods';
 import { giveMarks } from './marks';
 import { checkSpike } from './spikes';
@@ -53,103 +53,136 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
       return result;
     }
 
-    // The version in force when the entry happened, then only those that watch its kind.
-    const quests = await tx.query<LiveQuest>(
-      `SELECT * FROM (
-         SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
-                v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line, q.unit, v.after_quest
-           FROM quest_versions v JOIN quests q ON q.id = v.quest_id
-          WHERE q.status = 'live' AND v.valid_from <= $2
-          ORDER BY v.quest_id, v.version DESC) inforce
-        WHERE $1 = ANY(inforce.watches)
-        ORDER BY quest_id`,
-      [entry.kind, entry.occurredAt],
-    );
+    const quests = await questsInForce(tx, entry.occurredAt, entry.kind);
     // An entry missing the item its own quest needs is not counted anywhere else either.
     const missingItem = entry.item === undefined && quests.some((q) => q.each_item);
-
-    const write = (q: LiveQuest, points: number, step: string | null, reason: string | null) => tx.query(
-      `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step, reason, item)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [entry.entryId, entry.kiungoId, q.quest_id, q.version, points, q.quest_line, step, reason, entry.item ?? null],
-    );
-    const notPaid = async (q: LiveQuest, reason: string) => {
-      await write(q, 0, null, reason); // kept, so a redelivered entry gets the same answer
-      result.notAwarded.push({ quest: q.quest_id, reason });
-    };
-
-    for (const q of quests) {
-      if (q.unit && !person.units.includes(q.unit)) continue; // a unit's quests are for its members only
-      if (TRUST_ORDER.indexOf(person.trust) < TRUST_ORDER.indexOf(q.trust_needed)) {
-        await notPaid(q, `needs_${q.trust_needed}`);
-        continue;
-      }
-      if (missingItem && q.template !== 'repeat') continue;
-      const age = now.getTime() - Date.parse(entry.occurredAt);
-      const recentOnly = q.template === 'streak' || q.template === 'mission';
-      if (recentOnly && (age > RECENT_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
-        await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run, or fills a mission, after the fact or ahead of it
-        continue;
-      }
-      if (q.template === 'mission') {
-        const paid = await contribute(tx, q, entry, periodKey(entry.occurredAt, q.period, person.timezone));
-        if (paid) result.awards.push({ quest: q.quest_id, points: q.points!, step: paid });
-        continue;
-      }
-      if (q.evidence && !entry.evidence) {
-        await notPaid(q, 'missing_evidence');
-        continue;
-      }
-      if (q.each_item === 'ever') {
-        // "Once per item, ever" reads other periods' rows, so lock the whole quest for this member.
-        await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.quest_id]);
-      }
-      const key = q.template === 'repeat' ? periodKey(entry.occurredAt, q.period, person.timezone) : 'once';
-      // Make sure the row exists, then lock it, so two entries can't both take the last place.
-      await tx.query(
-        'INSERT INTO quest_progress (kiungo_id, quest_id, period_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-        [entry.kiungoId, q.quest_id, key],
-      );
-      const [row] = await tx.query<Progress>(
-        `SELECT count, completions, counted FROM quest_progress
-          WHERE kiungo_id = $1 AND quest_id = $2 AND period_key = $3 FOR UPDATE`,
-        [entry.kiungoId, q.quest_id, key],
-      );
-      const itemPaidBefore = q.each_item === 'ever' && entry.item !== undefined && (await tx.query(
-        'SELECT 1 FROM quest_progress WHERE kiungo_id = $1 AND quest_id = $2 AND period_key <> $3 AND $4 = ANY(counted)',
-        [entry.kiungoId, q.quest_id, key, entry.item],
-      )).length > 0;
-
-      // The quest it follows has paid this member for this item, and that award hasn't been corrected away.
-      const afterPaid = q.after_quest !== null && entry.item !== undefined && (await tx.query(
-        `SELECT 1 FROM awards a WHERE a.kiungo_id = $1 AND a.quest_id = $2 AND a.item = $3 AND a.points > 0
-            AND NOT EXISTS (SELECT 1 FROM awards c WHERE c.corrects = a.id)`,
-        [entry.kiungoId, q.after_quest, entry.item],
-      )).length > 0;
-      const d = decide(
-        { template: q.template, period: q.period, target: q.target, limit: q.period_limit, eachItem: q.each_item, points: q.points, steps: q.steps,
-          after: q.after_quest },
-        row!,
-        { kind: entry.kind, item: entry.item, itemPaidBefore, afterPaid, week: periodKey(entry.occurredAt, 'weekly', person.timezone),
-          weekNo: periodOrdinal(entry.occurredAt, 'weekly', person.timezone) },
-      );
-      if (d.progress !== row) {
-        await tx.query(
-          `UPDATE quest_progress SET count = $4, completions = $5, counted = $6
-            WHERE kiungo_id = $1 AND quest_id = $2 AND period_key = $3`,
-          [entry.kiungoId, q.quest_id, key, d.progress.count, d.progress.completions, d.progress.counted],
-        );
-      }
-      if (d.award) {
-        await write(q, d.award.points, d.award.step ?? null, null);
-        result.awards.push({ quest: q.quest_id, points: d.award.points, ...(d.award.step ? { step: d.award.step } : {}) });
-      } else if (d.reason) {
-        await notPaid(q, d.reason);
-      }
-    }
+    for (const q of quests) await applyQuest(tx, person, entry, q, missingItem, now, result);
     result.awards.push(...(await giveMarks(tx, person, entry.entryId, entry.occurredAt)));
     return result;
   });
+}
+
+// The version of each live quest in force when the entry happened, then only those that watch its kind.
+async function questsInForce(tx: Db, occurredAt: string, kind: string): Promise<LiveQuest[]> {
+  return tx.query<LiveQuest>(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (v.quest_id) v.quest_id, v.version, q.template, v.watches, v.target, v.period, v.period_limit,
+              v.each_item, v.points, v.steps, v.trust_needed, v.evidence, q.quest_line, q.unit, v.after_quest
+         FROM quest_versions v JOIN quests q ON q.id = v.quest_id
+        WHERE q.status = 'live' AND v.valid_from <= $2
+        ORDER BY v.quest_id, v.version DESC) inforce
+      WHERE $1 = ANY(inforce.watches)
+      ORDER BY quest_id`,
+    [kind, occurredAt],
+  );
+}
+
+// What one entry does to one quest: progress, then an award or the reason for none, written to the notebook.
+async function applyQuest(tx: Db, person: Person, entry: ActivityEntry, q: LiveQuest, missingItem: boolean, now: Date, result: EntryResult) {
+  const write = (q: LiveQuest, points: number, step: string | null, reason: string | null) => tx.query(
+    `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step, reason, item)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [entry.entryId, entry.kiungoId, q.quest_id, q.version, points, q.quest_line, step, reason, entry.item ?? null],
+  );
+  const notPaid = async (q: LiveQuest, reason: string) => {
+    await write(q, 0, null, reason); // kept, so a redelivered entry gets the same answer
+    result.notAwarded.push({ quest: q.quest_id, reason });
+  };
+
+  if (q.unit && !person.units.includes(q.unit)) return; // a unit's quests are for its members only
+  if (TRUST_ORDER.indexOf(person.trust) < TRUST_ORDER.indexOf(q.trust_needed)) {
+    await notPaid(q, `needs_${q.trust_needed}`);
+    return;
+  }
+  if (missingItem && q.template !== 'repeat') return;
+  const age = now.getTime() - Date.parse(entry.occurredAt);
+  const recentOnly = q.template === 'streak' || q.template === 'mission';
+  if (recentOnly && (age > RECENT_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
+    await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run, or fills a mission, after the fact or ahead of it
+    return;
+  }
+  if (q.template === 'mission') {
+    const paid = await contribute(tx, q, entry, periodKey(entry.occurredAt, q.period, person.timezone));
+    if (paid) result.awards.push({ quest: q.quest_id, points: q.points!, step: paid });
+    return;
+  }
+  if (q.evidence && !entry.evidence) {
+    await notPaid(q, 'missing_evidence');
+    return;
+  }
+  if (q.after_quest !== null) {
+    // The same lock the quest it follows takes below, so an entry and the one it waits for are read one after the other.
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.after_quest]);
+  }
+  if (q.each_item) {
+    // Once per item reads the member's earlier rows (other periods too), and a quest that follows this one waits on this lock.
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1 || '/' || $2))", [entry.kiungoId, q.quest_id]);
+  }
+  const key = q.template === 'repeat' ? periodKey(entry.occurredAt, q.period, person.timezone) : 'once';
+  // Make sure the row exists, then lock it, so two entries can't both take the last place.
+  await tx.query(
+    'INSERT INTO quest_progress (kiungo_id, quest_id, period_key) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    [entry.kiungoId, q.quest_id, key],
+  );
+  const [row] = await tx.query<Progress>(
+    `SELECT count, completions, counted FROM quest_progress
+      WHERE kiungo_id = $1 AND quest_id = $2 AND period_key = $3 FOR UPDATE`,
+    [entry.kiungoId, q.quest_id, key],
+  );
+  const itemPaidBefore = q.each_item === 'ever' && entry.item !== undefined && (await tx.query(
+    'SELECT 1 FROM quest_progress WHERE kiungo_id = $1 AND quest_id = $2 AND period_key <> $3 AND $4 = ANY(counted)',
+    [entry.kiungoId, q.quest_id, key, entry.item],
+  )).length > 0;
+
+  // The quest it follows has paid this member for this item, and that award hasn't been corrected away.
+  const afterPaid = q.after_quest !== null && entry.item !== undefined && (await tx.query(
+    `SELECT 1 FROM awards a WHERE a.kiungo_id = $1 AND a.quest_id = $2 AND a.item = $3 AND a.points > 0
+        AND NOT EXISTS (SELECT 1 FROM awards c WHERE c.corrects = a.id)`,
+    [entry.kiungoId, q.after_quest, entry.item],
+  )).length > 0;
+  const d = decide(
+    { template: q.template, period: q.period, target: q.target, limit: q.period_limit, eachItem: q.each_item, points: q.points, steps: q.steps,
+      after: q.after_quest },
+    row!,
+    { kind: entry.kind, item: entry.item, itemPaidBefore, afterPaid, week: periodKey(entry.occurredAt, 'weekly', person.timezone),
+      weekNo: periodOrdinal(entry.occurredAt, 'weekly', person.timezone) },
+  );
+  if (d.progress !== row) {
+    await tx.query(
+      `UPDATE quest_progress SET count = $4, completions = $5, counted = $6
+        WHERE kiungo_id = $1 AND quest_id = $2 AND period_key = $3`,
+      [entry.kiungoId, q.quest_id, key, d.progress.count, d.progress.completions, d.progress.counted],
+    );
+  }
+  if (d.award) {
+    await write(q, d.award.points, d.award.step ?? null, null);
+    result.awards.push({ quest: q.quest_id, points: d.award.points, ...(d.award.step ? { step: d.award.step } : {}) });
+    if (d.award.points > 0 && entry.item !== undefined) await payWaiting(tx, person, q.quest_id, entry.item, now);
+  } else if (d.reason) {
+    await notPaid(q, d.reason);
+  }
+}
+
+// Entries read before the quest they follow had paid for their item (a comment before its rating), not yet
+// answered again: each goes through its quest now, as if it had just arrived, at the version in force when it happened.
+async function payWaiting(tx: Db, person: Person, paidQuest: string, item: string, now: Date) {
+  const waiting = await tx.query<{ entry_id: string; quest_id: string; kind: string; occurred_at: Date | string; carriage: string }>(
+    `SELECT a.entry_id, a.quest_id, e.kind, e.occurred_at, e.carriage
+       FROM awards a JOIN entries_read e ON e.entry_id = a.entry_id
+      WHERE a.kiungo_id = $1 AND a.item = $2 AND a.points = 0 AND a.reason = 'needs_earlier_quest'
+        AND EXISTS (SELECT 1 FROM quest_versions v WHERE v.quest_id = a.quest_id AND v.version = a.quest_version AND v.after_quest = $3)
+        AND NOT EXISTS (SELECT 1 FROM awards l WHERE l.kiungo_id = a.kiungo_id AND l.entry_id = a.entry_id AND l.quest_id = a.quest_id AND l.id > a.id)
+      ORDER BY a.id`,
+    [person.kiungoId, item, paidQuest],
+  );
+  for (const w of waiting) {
+    const occurredAt = new Date(w.occurred_at).toISOString();
+    const q = (await questsInForce(tx, occurredAt, w.kind)).find((x) => x.quest_id === w.quest_id);
+    if (!q) continue; // its quest isn't live now
+    // It passed the evidence check when it was first read; the evidence itself is never kept.
+    const entry: ActivityEntry = { entryId: w.entry_id, kiungoId: person.kiungoId, kind: w.kind, occurredAt, carriage: w.carriage, item, evidence: 'checked' };
+    await applyQuest(tx, person, entry, q, false, now, { entry: w.entry_id, awards: [], notAwarded: [] });
+  }
 }
 
 // One contribution to a unit's mission. The entry that reaches the target pays every contributor this period,
@@ -191,7 +224,8 @@ export async function earned(db: Db, entryId: string, kiungoId?: string): Promis
     'SELECT outcome FROM entries_read WHERE entry_id = $1 AND ($2::text IS NULL OR kiungo_id = $2)', [entryId, kiungoId ?? null],
   );
   if (read?.outcome) result.notAwarded.push({ quest: null, reason: read.outcome });
-  for (const r of rows) {
+  for (const [i, r] of rows.entries()) {
+    if (r.points === 0 && rows.slice(i + 1).some((l) => l.quest_id === r.quest_id)) continue; // answered again later (it waited)
     if (r.points === 0 && r.reason) result.notAwarded.push({ quest: r.quest_id, reason: r.reason });
     else result.awards.push({ quest: r.quest_id, points: r.points, ...(r.step ? { step: r.step } : {}) });
   }
