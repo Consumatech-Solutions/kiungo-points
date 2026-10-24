@@ -6,7 +6,7 @@ import { allAwards, correct, history } from './points/history';
 import { periodKey, type Period } from './points/periods';
 import { earned, questProgress } from './points/progress';
 import { standing } from './points/standing';
-import { draftQuest, liveQuests, setStatus, unitStanding } from './quests/board';
+import { draftQuest, liveQuests, questUnit, setStatus, unitStanding } from './quests/board';
 import { QuestDraft } from './quests/templates';
 import { bearer, CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from './http';
 import { carriageFor, sha256, setCarriage } from './readers';
@@ -45,26 +45,32 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
   // The public quest board (transparency, ADR-001).
   app.get('/v1/quests', async (c) => c.json({ data: await liveQuests(db) }));
 
-  app.post('/v1/quests', async (c) => {
-    const ok = await admin(c);
-    if (ok !== true) return ok;
-    const body = QuestDraft.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);
-    const result = await draftQuest(db, body.data);
-    if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
-    return c.json({ data: result }, 201);
-  });
-
-  app.post('/v1/quests/:id/:step{live|pause|end}', async (c) => {
-    const ok = await admin(c);
-    if (ok !== true) return ok;
-    const result = await setStatus(db, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end');
+  const statusAnswer = (c: Context, result: Awaited<ReturnType<typeof setStatus>>) => {
     if ('error' in result) {
       if (result.error === 'unknown_quest') return c.json(error('unknown_quest', 'No quest with this id.'), 404);
       if (result.error === 'quest_ended') return c.json(error('quest_ended', 'This quest has ended for good.'), 409);
       return c.json(error('not_allowed', 'Only a live quest can be paused.'), 409);
     }
     return c.json({ data: result });
+  };
+  const draftAnswer = async (c: Context, raw: unknown) => {
+    const body = QuestDraft.safeParse(raw);
+    if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);
+    const result = await draftQuest(db, body.data);
+    if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
+    return c.json({ data: result }, 201);
+  };
+
+  app.post('/v1/quests', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    return draftAnswer(c, await c.req.json().catch(() => null));
+  });
+
+  app.post('/v1/quests/:id/:step{live|pause|end}', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    return statusAnswer(c, await setStatus(db, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end'));
   });
 
   // A carriage, by its key, within its rate limit; or the answer refusing it.
@@ -110,6 +116,48 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const at = now();
     const quests = await unitStanding(db, unit.data, at, (p) => periodKey(at.toISOString(), p as Period, 'Africa/Kinshasa'));
     return c.json({ data: { unit: unit.data, quests } });
+  });
+
+  // A member of the unit, acting through a carriage they allow, at the level the rulebook asks for (design.md §5).
+  const unitMember = async (c: Context, unit: string, kiungoId: unknown, level: 'Fruit' | 'Seedkeeper') => {
+    const carriage = await carriageOf(c);
+    if (carriage instanceof Response) return carriage;
+    const id = KIUNGO_ID.safeParse(kiungoId);
+    if (!id.success) return c.json(error('invalid_kiungo_id', 'Say which member is acting, by Kiungo ID.'), 400);
+    const person = await identity.lookup(id.data);
+    if (!person || !person.units.includes(unit) || !(await identity.allows(id.data, carriage))) {
+      return c.json(error('not_allowed', `Only a member of ${unit}, through a carriage they allow, can do this.`), 403);
+    }
+    if (!(await standing(db, identity, id.data)).levels.some((l) => l.level === level)) {
+      return c.json(error('not_allowed', `This needs a member of ${unit} at ${level} or above.`), 403);
+    }
+    return id.data;
+  };
+
+  // A unit's own challenge, proposed by one of its Fruit members. It is a draft until a Seedkeeper puts it live.
+  app.post('/v1/units/:unitId/quests', async (c) => {
+    const unit = UNIT.safeParse(c.req.param('unitId'));
+    if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
+    const raw = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!raw || typeof raw !== 'object') return c.json(error('invalid_quest', 'Send the quest as JSON.'), 400);
+    const { proposedBy, ...quest } = raw;
+    // Fruit proposes a challenge; only a Seedkeeper sets the unit's missions (design.md §5).
+    const member = await unitMember(c, unit.data, proposedBy, quest.template === 'mission' ? 'Seedkeeper' : 'Fruit');
+    if (typeof member !== 'string') return member;
+    if (typeof quest.id !== 'string' || !quest.id.startsWith(`${unit.data}.`)) {
+      return c.json(error('invalid_quest', `A ${unit.data} quest's id starts with "${unit.data}.".`), 400);
+    }
+    return draftAnswer(c, { ...quest, questLine: 'local', unit: unit.data });
+  });
+
+  app.post('/v1/units/:unitId/quests/:id/:step{live|pause|end}', async (c) => {
+    const unit = UNIT.safeParse(c.req.param('unitId'));
+    if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
+    const body = await c.req.json().catch(() => null) as { by?: unknown } | null;
+    const member = await unitMember(c, unit.data, body?.by, 'Seedkeeper');
+    if (typeof member !== 'string') return member;
+    if ((await questUnit(db, c.req.param('id'))) !== unit.data) return c.json(error('unknown_quest', `No ${unit.data} quest with this id.`), 404);
+    return statusAnswer(c, await setStatus(db, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end'));
   });
 
   app.get('/v1/people/:kiungoId/standing', async (c) => {

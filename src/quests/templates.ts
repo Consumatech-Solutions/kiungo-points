@@ -13,7 +13,8 @@ const common = {
   questLine: z.enum(['picture', 'needs', 'offers', 'business', 'invites', 'sharing', 'building', 'local']),
   trustNeeded: z.enum(['joined', 'vouched', 'verified']),
   building: z.boolean().default(false),
-  evidence: z.enum(['sale_code']).optional(), // photo evidence (confirmed by a vouched member) arrives with local challenges, T-09
+  evidence: z.enum(['sale_code']).optional(), // photo evidence needs a confirmation flow from the carriages (follow-up)
+  unit: UNIT.optional(), // a unit's own quest
 };
 
 const step = z.object({
@@ -64,6 +65,8 @@ export const QuestDraft = z.discriminatedUnion('template', [
 ]);
 export type QuestDraft = z.infer<typeof QuestDraft>;
 
+const LOCAL_MAX = 50;
+
 /** The quest as stored in one version row. */
 export interface QuestVersion {
   watches: string[]; target: number; period: string; period_limit: number | null;
@@ -79,6 +82,13 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
   const watched = 'watches' in d ? d.watches as string[] : 'steps' in d ? (d.steps as { kind: string }[]).map((s) => s.kind) : [];
   const unpaid = watched.find((k) => NEVER_EARNS.test(k));
   if (unpaid) return { reason: `${unpaid} never earns points: vouching, paying and buying are never rewarded.` };
+  if (d.unit && d.questLine !== 'local') return { reason: 'A unit quest is a local quest (quest line local).' };
+  if (d.questLine === 'local' || d.unit) {
+    // activities.md rule 7: no single local activity worth more than 50 points
+    if (d.template === 'streak') return { reason: 'Streaks are core quests; a local quest can\'t be one.' };
+    const worth = d.template === 'steps' ? d.steps.map((s) => s.points) : [d.points];
+    if (worth.some((p) => p > LOCAL_MAX)) return { reason: `A local activity or step is worth at most ${LOCAL_MAX} points.` };
+  }
   switch (d.template) {
     case 'repeat': {
       if (unique(d.watches)) return { reason: `${unique(d.watches)} is watched twice.` };
