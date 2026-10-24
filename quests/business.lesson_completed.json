@@ -1,0 +1,25 @@
+{
+  "id": "business.lesson_completed",
+  "questLine": "business",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-10-24T00:00:00.000Z",
+      "title": "Complete an academy lesson",
+      "watches": [
+        "business.lesson_completed"
+      ],
+      "target": 1,
+      "period": "weekly",
+      "limit": 10,
+      "eachItem": "ever",
+      "points": 5,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

@@ -35,6 +35,7 @@ const CORE: [string, number, string, number | null, string | null, string][] = [
   ['business.shop_onboarded', 150, 'once', null, 'ever', 'vouched'],
   ['business.agent_active', 150, 'once', null, 'ever', 'verified'],
   ['business.course_completed', 50, 'once', null, 'ever', 'joined'],
+  ['business.lesson_completed', 5, 'weekly', 10, 'ever', 'joined'], // founder, 2026-10-24
   ['business.course_on_time', 25, 'once', null, 'ever', 'joined'],
   ['business.franchise_launched', 200, 'once', null, 'ever', 'vouched'],
   ['business.trading_month', 20, 'monthly', 1, null, 'vouched'],
