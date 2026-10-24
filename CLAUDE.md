@@ -1,6 +1,6 @@
 # kiungo-points
 
-The Kiungo points system. Read `README.md`, `ARCHITECTURE.md` and `GLOSSARY.md` first, then the blueprint (TRD and ADRs) linked from them. The owner is Olatoye Amosun, Founder & CEO: non-technical, plain language, plan first and wait for "go", ask before anything outward-facing, merge only when he says "merge", never put secrets in chat or code.
+The Kiungo points system. Read `docs/HANDOVER.md` (current state, decisions, next step; update it at the end of every session), then `README.md`, `ARCHITECTURE.md` and `GLOSSARY.md`, then the blueprint (TRD and ADRs) linked from them. The owner is Olatoye Amosun, Founder & CEO: non-technical, plain language, plan first and wait for "go", ask before anything outward-facing, merge only when he says "merge", never put secrets in chat or code.
 
 ## Rules specific to this project
 
