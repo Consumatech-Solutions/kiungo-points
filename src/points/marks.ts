@@ -47,13 +47,23 @@ export async function giveMarks(tx: Db, person: Person, entryId: string, occurre
 }
 
 /**
+ * When a first's award is corrected: the member loses that first, and the next member seen there can take it.
+ * They can never take it back themselves (one row per member and mark). Any other quest is left alone.
+ */
+export async function freeFirst(tx: Db, kiungoId: string, questId: string, step: string | null): Promise<void> {
+  const f = FIRSTS.find((x) => x.quest === questId);
+  if (!f || step === null) return;
+  await tx.query('UPDATE marks SET freed_at = now() WHERE kiungo_id = $1 AND mark = $2 AND freed_at IS NULL', [kiungoId, `${f.mark}:${step}`]);
+}
+
+/**
  * A member's marks: Founding member, worked out from their join date (never stored), then the firsts they hold,
  * in the order they were given.
  */
 export async function marksOf(db: Db, person: Person | null, kiungoId: string): Promise<{ mark: string; givenAt: string }[]> {
   const founding = person && Date.parse(person.joinedAt) < SWITCH_ON ? [{ mark: 'founding_member', givenAt: person.joinedAt }] : [];
   const rows = await db.query<{ mark: string; given_at: Date | string }>(
-    'SELECT mark, given_at FROM marks WHERE kiungo_id = $1 ORDER BY id', [kiungoId],
+    'SELECT mark, given_at FROM marks WHERE kiungo_id = $1 AND freed_at IS NULL ORDER BY id', [kiungoId],
   );
   return [...founding, ...rows.map((r) => ({ mark: r.mark, givenAt: new Date(r.given_at).toISOString() }))];
 }

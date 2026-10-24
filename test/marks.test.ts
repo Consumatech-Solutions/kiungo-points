@@ -78,4 +78,61 @@ describe('T-10 marks', () => {
     const res = await t.act('k-polyglot', 'picture.look', AT, 'p');
     expect(res.awards.filter((a: any) => a.quest === 'first.language').map((a: any) => a.step)).toEqual(['fr', 'ln', 'sw']);
   });
+
+  describe('T-20 a corrected first is freed', () => {
+    const correctLatest = async (kiungoId: string, quest: string) => {
+      const [a] = await t.db.query<{ id: string }>(
+        'SELECT id FROM awards WHERE kiungo_id = $1 AND quest_id = $2 AND corrects IS NULL ORDER BY id DESC LIMIT 1', [kiungoId, quest]);
+      const res = await t.call('POST', '/v1/corrections', { award: Number(a!.id), reason: 'test' }, ADMIN);
+      expect(res.status).toBe(201);
+    };
+    const firstGH = (res: any) => res.awards.filter((a: any) => a.quest === 'first.country');
+
+    beforeEach(async () => {
+      for (const id of ['k-amina', 'k-kofi', 'k-ama']) await join(id, '2027-01-15T08:00:00Z', { country: 'GH' });
+      await t.act('k-amina', 'picture.look', AT, 'a-look');
+    });
+
+    it('frees a first when its award is corrected, for the next member whose entry is read', async () => {
+      await correctLatest('k-amina', 'first.country');
+      expect(firstGH(await t.act('k-kofi', 'picture.look', AT, 'k-look'))).toEqual([{ quest: 'first.country', points: 25, step: 'GH' }]);
+      expect(await marks('k-kofi')).toContain('first_in_country:GH');
+      expect(await marks('k-amina')).not.toContain('first_in_country:GH');
+    });
+
+    it('never gives a corrected member back the first they lost', async () => {
+      await correctLatest('k-amina', 'first.country');
+      expect(firstGH(await t.act('k-amina', 'picture.name', AT, 'a-name'))).toEqual([]);
+      expect(await marks('k-amina')).not.toContain('first_in_country:GH');
+    });
+
+    it('frees a first again when its second award is corrected', async () => {
+      await correctLatest('k-amina', 'first.country');
+      await t.act('k-kofi', 'picture.look', AT, 'k-look');
+      await correctLatest('k-kofi', 'first.country');
+      expect(firstGH(await t.act('k-ama', 'picture.look', AT, 'm-look'))).toEqual([{ quest: 'first.country', points: 25, step: 'GH' }]);
+    });
+
+    it('keeps the record that a first was given and freed', async () => {
+      await correctLatest('k-amina', 'first.country');
+      const rows = await t.db.query<{ freed_at: unknown }>(
+        "SELECT freed_at FROM marks WHERE kiungo_id = 'k-amina' AND mark = 'first_in_country:GH'");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.freed_at).not.toBeNull();
+    });
+
+    it('leaves marks alone when another kind of award is corrected', async () => {
+      await correctLatest('k-amina', 'picture.look');
+      expect(await marks('k-amina')).toContain('first_in_country:GH');
+      expect(firstGH(await t.act('k-kofi', 'picture.look', AT, 'k-look'))).toEqual([]);
+    });
+
+    // A smoke test: PGlite runs one transaction at a time, so this can't race; on PostgreSQL the unique mark decides.
+    it('gives a freed first to one member only when two arrive at once (smoke test)', async () => {
+      await correctLatest('k-amina', 'first.country');
+      await Promise.all([t.act('k-kofi', 'picture.look', AT, 'k'), t.act('k-ama', 'picture.look', AT, 'm')]);
+      const holders = [...await marks('k-kofi'), ...await marks('k-ama')].filter((m) => m === 'first_in_country:GH');
+      expect(holders).toHaveLength(1);
+    });
+  });
 });
