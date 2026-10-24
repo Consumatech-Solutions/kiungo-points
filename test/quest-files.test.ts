@@ -77,6 +77,11 @@ describe('T-14 quests as public files', () => {
     await expect(loadQuests(t.db, skipped)).rejects.toThrow(/numbered 1, 2, 3/);
   });
 
+  it('refuses a title that hints points are worth money', async () => {
+    await expect(loadQuests(t.db, withVersion('share.post', (v) => ({ ...v, validFrom: '2099-01-01T00:00:00Z', title: 'Share a post, earn tokens' }))))
+      .rejects.toThrow(/worth money/);
+  });
+
   it('refuses to draft or change a core quest through the admin API', async () => {
     const res = await t.call('POST', '/v1/quests', {
       id: 'need.shopping_list', title: 'Share your shopping list', questLine: 'needs', template: 'repeat',
