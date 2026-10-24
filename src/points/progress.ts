@@ -5,6 +5,10 @@ import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rul
 
 export { NEVER_EARNS }; // the Quests board refuses to draft quests for these
 
+// A streak counts an entry only if it is read within 14 days of when it happened.
+const STREAK_WINDOW_MS = 14 * 86_400_000;
+const CLOCK_SLACK_MS = 3_600_000; // a phone's clock may run a little ahead
+
 export interface Award { quest: string; points: number; step?: string }
 export interface NotAwarded { quest: string | null; reason: string }
 export interface EntryResult { entry: string; awards: Award[]; notAwarded: NotAwarded[] }
@@ -19,7 +23,7 @@ interface LiveQuest {
  * Progress: turns one activity entry into progress on every live quest that watches it,
  * and pays the quests that complete. An entry delivered twice is read once.
  */
-export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityEntry): Promise<EntryResult> {
+export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityEntry, now = new Date()): Promise<EntryResult> {
   const result: EntryResult = { entry: entry.entryId, awards: [], notAwarded: [] };
 
   if (!(await identity.allows(entry.kiungoId, READER))) {
@@ -77,6 +81,11 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         continue;
       }
       if (missingItem && q.template !== 'repeat') continue;
+      const age = now.getTime() - Date.parse(entry.occurredAt);
+      if (q.template === 'streak' && (age > STREAK_WINDOW_MS || age < -CLOCK_SLACK_MS)) {
+        await notPaid(q, age > 0 ? 'too_late' : 'too_early'); // nobody builds a run after the fact, or ahead of it
+        continue;
+      }
       if (q.evidence && !entry.evidence) {
         await notPaid(q, 'missing_evidence');
         continue;

@@ -13,11 +13,12 @@ import { mayWrite, writeEntry } from './rails';
 const KIND = z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/).max(64);
 
 /** Mounts `/standin/*`: people, permissions, carriages, and carriages writing activity. */
-export function standinRoutes(app: Hono, { db, identity, admin, carriageOf }: {
+export function standinRoutes(app: Hono, { db, identity, admin, carriageOf, now }: {
   db: Db;
   identity: IdentityPlug;
   admin: (c: Context) => Promise<true | Response>;
   carriageOf: (c: Context) => Promise<string | Response>;
+  now: () => Date;
 }) {
   app.post('/standin/people', async (c) => {
     const ok = await admin(c);
@@ -102,7 +103,7 @@ export function standinRoutes(app: Hono, { db, identity, admin, carriageOf }: {
       return c.json(error('unknown_person', 'No person with this Kiungo ID.'), 404);
     }
     const entry = await writeEntry(db, carriage.name, body.data);
-    const result = await takeEntry(db, identity, entry);
+    const result = await takeEntry(db, identity, entry, now());
     // The writing carriage sees what the entry earned only if the member lets it read their points.
     if (!(await identity.allows(entry.kiungoId, carriage.name))) return c.json({ data: { entry: entry.entryId } }, 201);
     return c.json({ data: { ...result, ...(await standing(db, identity, entry.kiungoId)) } }, 201);

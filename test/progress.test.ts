@@ -20,6 +20,7 @@ describe('T-03 progress and limits', () => {
   let t: Awaited<ReturnType<typeof setup>>;
   beforeEach(async () => {
     t = await setup();
+    t.setNow('2026-10-26T12:00:00Z'); // the dated entries below are read soon after they happen
     await t.person('k-amina');
   });
 
@@ -134,6 +135,7 @@ describe('T-03 progress and limits', () => {
   });
 
   it('shows the member\'s progress on each quest they have touched, in this period', async () => {
+    t.setNow(null);
     const now = new Date().toISOString();
     await t.act('k-amina', 'need.shopping_list', now, 's1');
     await t.act('k-amina', 'need.shopping_list', now, 's2');

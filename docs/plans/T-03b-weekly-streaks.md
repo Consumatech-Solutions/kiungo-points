@@ -18,3 +18,7 @@
 ## Out of scope
 
 The best streak in the full standing answer (T-05 builds the full standing).
+
+## Later change (founder, 2026-10-22)
+
+An entry counts towards a streak only if it is read within 14 days of when it happened (`too_late` otherwise), so nobody can build a run after the fact. Other quests are unaffected. Tests read entries on a test clock (`setNow`).

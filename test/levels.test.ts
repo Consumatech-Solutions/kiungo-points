@@ -105,7 +105,10 @@ describe('T-05 levels', () => {
   it('shows the best streak', async () => {
     await t.person('k-amina');
     const week = (n: number) => new Date(Date.now() - (5 - n) * 7 * 86_400_000).toISOString();
-    for (const n of [1, 2, 3]) await t.act('k-amina', 'need.shopping_list', week(n), `s${n}`);
+    for (const n of [1, 2, 3]) {
+      t.setNow(week(n)); // each read as it happens
+      await t.act('k-amina', 'need.shopping_list', week(n), `s${n}`);
+    }
     expect(await standing('k-amina')).toMatchObject({ bestStreak: 3 });
   });
 });

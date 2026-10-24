@@ -19,6 +19,7 @@ const EXTRA_KINDS = ['vouch.given', 'payment.sent', 'purchase.made', 'tomato.pla
 
 /** A fresh database with every migration applied, and the app on top of it. */
 export async function setup({ limit = Infinity } = {}) {
+  let clock: Date | null = null; // null: the real time
   const pg = new PGlite();
   for (const f of readdirSync('migrations').sort()) await pg.exec(readFileSync(`migrations/${f}`, 'utf8'));
   const db = fromPglite(pg);
@@ -27,7 +28,7 @@ export async function setup({ limit = Infinity } = {}) {
     calls.set(carriage, (calls.get(carriage) ?? 0) + 1);
     return calls.get(carriage)! <= limit;
   };
-  const app = createApp({ db, identity: standinIdentity(db), adminKey: ADMIN, limit: limiter });
+  const app = createApp({ db, identity: standinIdentity(db), adminKey: ADMIN, limit: limiter, now: () => clock ?? new Date() });
 
   // A member's points are read as the test carriage unless a test names a key ('' for none).
   const call = async (method: string, path: string, body?: unknown, key = path.startsWith('/v1/people/') ? ANY_KEY : undefined) => {
@@ -53,5 +54,8 @@ export async function setup({ limit = Infinity } = {}) {
   const person = (kiungoId: string, trust = 'joined', timezone = 'Africa/Kinshasa', allows = ['kiungo-points', 'kiungo.test']) =>
     call('POST', '/standin/people', { kiungoId, trust, timezone, allows }, ADMIN);
 
-  return { pg, db, call, act, person };
+  // Sets the time the points system reads entries at (null for the real time).
+  const setNow = (at: string | null) => { clock = at === null ? null : new Date(at); };
+
+  return { pg, db, call, act, person, setNow };
 }
