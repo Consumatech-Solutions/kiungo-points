@@ -4,7 +4,7 @@ Read this first, every session, after `CLAUDE.md`. Update it at the end of every
 
 ## State (2026-10-24)
 
-Nothing is deployed and nothing runs for real members. main is green: 174 tests on PGlite, typecheck clean.
+Nothing is deployed and nothing runs for real members. main is green: 187 tests on PGlite, typecheck clean.
 
 | Done | What | PRs |
 |---|---|---|
@@ -35,7 +35,8 @@ Each PR has a plan in `docs/plans/`, an Assumptions section and an independent Q
    - firsts, including a freed first;
    - spike flags;
    - once-per-item;
-   - a comment and its rating at the same moment.
+   - a comment and its rating at the same moment;
+   - "I'm in" or out at the same moment as an approval, and two approvals at once (the 50 paid once).
 
    Ask the founder before touching any live or staging database.
 2. **Blueprint follow-ups**, in kiungo-africa-site, `docs/gamification/engine/trd.md` §5. Don't edit that repository without asking.
@@ -89,7 +90,7 @@ Each PR has a plan in `docs/plans/`, an Assumptions section and an independent Q
 - The suggester can't be in on their own suggestion; any member of the unit can, at any level.
 - Every successful `live` of a suggested challenge re-reads the one entry `kiungo-points:idea:<quest>`, so a payment lost to a crash is made on the next approval, and never twice.
 - Suggestions are listed by quest id (there is no drafted-at time to sort by).
-- A new version of an open suggestion clears its "I'm in" list: members backed what they saw.
+- A new version of an open suggestion clears its "I'm in" list: members backed what they saw. Only the suggester (or the admin) may draft one; anyone else gets `not_your_suggestion`.
 - "I'm in" from a member who hasn't allowed the points system counts, but no entry is noted for them (so no spike flag).
 
 ## Notes for the next session

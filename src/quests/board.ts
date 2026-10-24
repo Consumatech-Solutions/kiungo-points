@@ -37,7 +37,7 @@ export async function unitStanding(db: Db, unit: string, at: Date, periodOf: (pe
   });
 }
 
-export type DraftResult = { quest: string; version: number; status: string } | { reason: string };
+export type DraftResult = { quest: string; version: number; status: string } | { reason: string } | { error: 'not_your_suggestion' };
 
 /**
  * Drafts a quest, or a new version of one, noting the member who proposed it (null for the admin).
@@ -61,6 +61,11 @@ export async function draftQuest(db: Db, d: QuestDraft, proposedBy: string | nul
     if (q!.template !== d.template) return { reason: `This quest is a ${q!.template} quest; a new version keeps its template.` };
     if (q!.quest_line !== d.questLine || q!.building !== d.building || q!.unit !== (d.unit ?? null)) {
       return { reason: 'A new version keeps the quest line, its unit and whether it counts as building. Draft a new quest to change them.' };
+    }
+    // Members back what the suggester wrote, so only the suggester changes an open suggestion (the admin, proposedBy null, may).
+    if (q!.status === 'draft' && proposedBy !== null) {
+      const by = await suggester(tx, d.id, q!.template);
+      if (by && by !== proposedBy) return { error: 'not_your_suggestion' as const };
     }
     const [row] = await tx.query<{ version: number }>(
       `INSERT INTO quest_versions (quest_id, version, title, watches, target, period, period_limit, each_item, points, steps, trust_needed, evidence, after_quest, proposed_by)
@@ -133,6 +138,7 @@ async function suggester(tx: Db, id: string, template: string): Promise<string |
   return v?.proposed_by ?? null;
 }
 
+// shortcut: a member who taps in and later leaves the unit still counts, until the identity rail can say who is in a unit (T-12).
 const backers = async (tx: Db, id: string) =>
   (await tx.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM quest_backers WHERE quest_id = $1', [id]))[0]!.n;
 

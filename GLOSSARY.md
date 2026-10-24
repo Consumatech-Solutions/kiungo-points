@@ -25,4 +25,6 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Reader** | A carriage (or Kiungo's points system itself, `kiungo-points`) that a member allows to read something of theirs | client, consumer |
 | **Mark** | A lasting recognition: Founding member (joined before 1 January 2030), or first in a unit, country or language (a first is freed for the next member if its award is corrected) | badge, achievement |
 | **Flag** | A note that a pattern looks unusual, for a person to review. Never a penalty | strike, ban |
+| **Suggestion** | A unit challenge a member proposed, waiting for enough members to say "I'm in" before a Seedkeeper can put it live | idea, proposal ticket |
+| **I'm in** | A member of the unit saying they would take part in a suggestion. One per member, withdrawable until approval; earns nothing. (The table `quest_backers` is an internal name) | vote, like, backer |
 | **Follows** | A quest that pays for an item only once another quest has paid the member for the same item (`after`); until then, `needs_earlier_quest`, and the entry waits: it is paid as soon as the other quest pays | depends on |

@@ -149,6 +149,16 @@ describe('T-17 members suggest quests', () => {
     expect(res.json.error.code).toBe('needs_more_members');
   });
 
+  it('lets only the suggester change an open suggestion', async () => {
+    await grow('k-baraka', ['matete'], 'Fruit');
+    for (const id of MEMBERS.slice(0, 3)) await tap(id);
+    const res = await t.call('POST', '/v1/units/matete/quests', { ...peppers, proposedBy: 'k-baraka', title: 'Grow fewer peppers' });
+    expect(res.status).toBe(409);
+    expect(res.json.error.code).toBe('not_your_suggestion');
+    const [s] = (await t.call('GET', '/v1/units/matete/suggestions?by=k-m0')).json.data.suggestions;
+    expect(s).toMatchObject({ title: 'Grow peppers', in: 3 });
+  });
+
   it('refuses a quest that pays for suggesting', async () => {
     const res = await t.call('POST', '/v1/quests', {
       id: 'local.backing', title: 'Back a suggestion', questLine: 'local', template: 'repeat', watches: ['suggestion.im_in'],

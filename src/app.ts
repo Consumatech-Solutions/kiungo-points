@@ -83,6 +83,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
       return c.json(error('core_quest_by_file', 'Core quests change by file, in a pull request (see quests/README.md).'), 400);
     }
     const result = await draftQuest(db, body.data, proposedBy);
+    if ('error' in result) return c.json(error('not_your_suggestion', 'Only the member who suggested this challenge can change it before it goes live.'), 409);
     if ('reason' in result) return c.json(error('invalid_quest', result.reason), 400);
     return c.json({ data: result }, 201);
   };
