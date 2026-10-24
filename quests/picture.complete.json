@@ -1,0 +1,36 @@
+{
+  "id": "picture.complete",
+  "questLine": "picture",
+  "template": "collect",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Your picture is complete",
+      "watches": [
+        "identity.phone_confirmed",
+        "picture.name",
+        "picture.look",
+        "picture.privacy",
+        "picture.age_range",
+        "picture.from",
+        "picture.lives",
+        "picture.languages",
+        "picture.household",
+        "picture.work",
+        "picture.joining_as",
+        "unit.joined"
+      ],
+      "target": 12,
+      "period": "once",
+      "limit": null,
+      "eachItem": null,
+      "points": 25,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

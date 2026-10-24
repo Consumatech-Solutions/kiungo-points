@@ -7,6 +7,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "load-quests": "esbuild scripts/load-quests.ts --bundle --platform=node --format=esm --packages=external --outfile=.build/load-quests.mjs --log-level=warning && node .build/load-quests.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

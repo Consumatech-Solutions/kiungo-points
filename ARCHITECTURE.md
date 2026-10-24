@@ -6,7 +6,7 @@ Full detail: the TRD in [`kiungo-africa-site/docs/gamification/engine/trd.md`](h
 
 | Module | What it does | Interface | Hides | Where |
 |---|---|---|---|---|
-| Quests | The board of quests, every version kept | `liveQuests`, `unitStanding`, `draftQuest`, `setStatus` | versioning, drafts, the template checks (including no quest for a never-earns kind) | `src/quests/` |
+| Quests | The board of quests, every version kept | `liveQuests`, `unitStanding`, `draftQuest`, `setStatus`, `loadQuests` (core quests from `quests/*.json`) | versioning, drafts, the template checks (including no quest for a never-earns kind) | `src/quests/` |
 | Progress | Turns an activity entry into progress and awards; corrects an award | `takeEntry`, `questProgress`, `NEVER_EARNS`, `correct` | already-read check, permission, trust, never-earns, evidence, periods and limits (`periods.ts`), the per-template decision (`rules.ts`), locking, the notebook | `src/points/` |
 | Standing | Where a person stands, and their record | `standing`, `earned`, `history`, `allAwards` (in `history.ts`) | counting points (the invite and local caps), the extra needs per level, levels never going down | `src/points/standing.ts` |
 | Marks | Founding member and the firsts | `giveMarks`, `marksOf` | one holder per first, the quest board's version in force | `src/points/marks.ts` |

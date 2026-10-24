@@ -1,0 +1,25 @@
+{
+  "id": "business.trading_month",
+  "questLine": "business",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "A month of active trading",
+      "watches": [
+        "business.trading_month"
+      ],
+      "target": 1,
+      "period": "monthly",
+      "limit": 1,
+      "eachItem": null,
+      "points": 20,
+      "steps": null,
+      "trustNeeded": "vouched",
+      "evidence": null
+    }
+  ]
+}

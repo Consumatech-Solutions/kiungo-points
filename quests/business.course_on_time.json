@@ -1,0 +1,25 @@
+{
+  "id": "business.course_on_time",
+  "questLine": "business",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Complete it within the set time",
+      "watches": [
+        "business.course_on_time"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": "ever",
+      "points": 25,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

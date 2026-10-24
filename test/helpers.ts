@@ -1,6 +1,7 @@
 import { PGlite, type Transaction } from '@electric-sql/pglite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createApp } from '../src/app';
+import { loadQuests, QuestFile } from '../src/quests/files';
 import type { Db } from '../src/db';
 import { standinIdentity } from '../src/standin/rails';
 
@@ -23,6 +24,8 @@ export async function setup({ limit = Infinity } = {}) {
   const pg = new PGlite();
   for (const f of readdirSync('migrations').sort()) await pg.exec(readFileSync(`migrations/${f}`, 'utf8'));
   const db = fromPglite(pg);
+  await loadQuests(db, readdirSync('quests').filter((f) => f.endsWith('.json')).sort()
+    .map((f) => QuestFile.parse(JSON.parse(readFileSync(`quests/${f}`, 'utf8')))));
   const calls = new Map<string, number>(); // a stand-in for Cloudflare's rate limiter
   const limiter = async (carriage: string) => {
     calls.set(carriage, (calls.get(carriage) ?? 0) + 1);

@@ -1,0 +1,25 @@
+{
+  "id": "unit.telegram_joined",
+  "questLine": "building",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Join your unit's Telegram group",
+      "watches": [
+        "unit.telegram_joined"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": "ever",
+      "points": 10,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

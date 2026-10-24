@@ -1,0 +1,25 @@
+{
+  "id": "invite.joined",
+  "questLine": "invites",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Someone you invited joins and takes part",
+      "watches": [
+        "invite.joined"
+      ],
+      "target": 1,
+      "period": "daily",
+      "limit": 3,
+      "eachItem": "ever",
+      "points": 10,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

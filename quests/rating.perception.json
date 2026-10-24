@@ -1,0 +1,25 @@
+{
+  "id": "rating.perception",
+  "questLine": "building",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Rate a brand or business",
+      "watches": [
+        "rating.perception"
+      ],
+      "target": 1,
+      "period": "weekly",
+      "limit": 10,
+      "eachItem": null,
+      "points": 2,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "build.idea_taken_up",
+  "questLine": "building",
+  "template": "repeat",
+  "building": true,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "An idea of yours is taken up",
+      "watches": [
+        "build.idea_taken_up"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": "ever",
+      "points": 50,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

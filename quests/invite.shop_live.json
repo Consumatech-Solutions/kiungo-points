@@ -1,0 +1,25 @@
+{
+  "id": "invite.shop_live",
+  "questLine": "invites",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "A shop you brought in goes live",
+      "watches": [
+        "invite.shop_live"
+      ],
+      "target": 1,
+      "period": "once",
+      "limit": null,
+      "eachItem": "ever",
+      "points": 25,
+      "steps": null,
+      "trustNeeded": "vouched",
+      "evidence": null
+    }
+  ]
+}

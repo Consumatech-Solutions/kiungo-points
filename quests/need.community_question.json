@@ -1,0 +1,25 @@
+{
+  "id": "need.community_question",
+  "questLine": "needs",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "The monthly community question",
+      "watches": [
+        "need.community_question"
+      ],
+      "target": 1,
+      "period": "monthly",
+      "limit": 1,
+      "eachItem": null,
+      "points": 15,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "need.service_rated",
+  "questLine": "needs",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "A service you use and what you think of it",
+      "watches": [
+        "need.service_rated"
+      ],
+      "target": 1,
+      "period": "quarterly",
+      "limit": null,
+      "eachItem": "per_period",
+      "points": 10,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}

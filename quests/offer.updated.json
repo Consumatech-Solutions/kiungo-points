@@ -1,0 +1,25 @@
+{
+  "id": "offer.updated",
+  "questLine": "offers",
+  "template": "repeat",
+  "building": false,
+  "status": "live",
+  "versions": [
+    {
+      "version": 1,
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "title": "Keep it up to date",
+      "watches": [
+        "offer.updated"
+      ],
+      "target": 1,
+      "period": "quarterly",
+      "limit": 1,
+      "eachItem": null,
+      "points": 5,
+      "steps": null,
+      "trustNeeded": "joined",
+      "evidence": null
+    }
+  ]
+}
