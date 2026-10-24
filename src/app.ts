@@ -1,13 +1,13 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { Db } from './db';
-import type { IdentityPlug } from './plugs';
+import { READER, type IdentityPlug } from './plugs';
 import { allAwards, correct, history } from './points/history';
 import { periodKey, type Period } from './points/periods';
-import { earned, questProgress } from './points/progress';
+import { earned, noteEntry, questProgress, takeEntry } from './points/progress';
 import { flags, reviewFlag, setSpikeSettings, spikeSettings } from './points/spikes';
 import { standing } from './points/standing';
-import { draftQuest, liveQuests, questUnit, setStatus, unitDrafts, unitStanding } from './quests/board';
+import { draftQuest, liveQuests, questUnit, setIn, setStatus, suggestions, unitDrafts, unitStanding } from './quests/board';
 import { compileQuest, QuestDraft } from './quests/templates';
 import { bearer, CARRIAGE_NAME, error, KIUNGO_ID, UNIT } from './http';
 import { carriageFor, sha256, setCarriage } from './readers';
@@ -50,10 +50,27 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     if ('error' in result) {
       if (result.error === 'unknown_quest') return c.json(error('unknown_quest', 'No quest with this id.'), 404);
       if (result.error === 'quest_ended') return c.json(error('quest_ended', 'This quest has ended for good.'), 409);
+      if (result.error === 'needs_more_members') return c.json(error('needs_more_members', `${result.in} of ${result.needed} members are in.`), 409);
       return c.json(error('not_allowed', 'Only a live quest can be paused.'), 409);
     }
-    return c.json({ data: result });
+    const { suggestedBy: _, ...data } = result;
+    return c.json({ data });
   };
+  // Both live routes: once a member's suggestion is live, its suggester earns "An idea of yours is taken up".
+  // One entry id per quest, so approving again re-reads it and pays at most once.
+  const changeStatus = async (c: Context, id: string, step: 'live' | 'pause' | 'end') => {
+    const result = await setStatus(db, id, step);
+    if (!('error' in result) && result.suggestedBy) {
+      await takeEntry(db, identity, {
+        entryId: `kiungo-points:idea:${id}`, kiungoId: result.suggestedBy, kind: 'build.idea_taken_up',
+        occurredAt: now().toISOString(), carriage: READER, item: id,
+      }, now());
+    }
+    return statusAnswer(c, result);
+  };
+  // Suggesting and "I'm in" earn nothing, but are noted so spike flags can watch them.
+  const note = (kiungoId: string, kind: string, carriage: string) =>
+    noteEntry(db, { entryId: `kiungo-points:${crypto.randomUUID()}`, kiungoId, kind, occurredAt: now().toISOString(), carriage });
   const draftAnswer = async (c: Context, raw: unknown, proposedBy: string | null = null) => {
     const body = QuestDraft.safeParse(raw);
     if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);
@@ -86,7 +103,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
   app.post('/v1/quests/:id/:step{live|pause|end}', async (c) => {
     const ok = await admin(c);
     if (ok !== true) return ok;
-    return statusAnswer(c, await setStatus(db, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end'));
+    return changeStatus(c, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end');
   });
 
   // A carriage, by its key, within its rate limit; or the answer refusing it.
@@ -134,8 +151,8 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     return c.json({ data: { unit: unit.data, quests } });
   });
 
-  // A member of the unit, acting through a carriage they allow, at the level the rulebook asks for (design.md §5).
-  const unitMember = async (c: Context, unit: string, kiungoId: unknown, level: 'Fruit' | 'Seedkeeper') => {
+  // A member of the unit, acting through a carriage they allow, at the level the rulebook asks for (design.md §5; null: any member).
+  const unitMember = async (c: Context, unit: string, kiungoId: unknown, level: 'Fruit' | 'Seedkeeper' | null) => {
     const carriage = await carriageOf(c);
     if (carriage instanceof Response) return carriage;
     const id = KIUNGO_ID.safeParse(kiungoId);
@@ -144,10 +161,10 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     if (!person || !person.units.includes(unit) || !(await identity.allows(id.data, carriage))) {
       return c.json(error('not_allowed', `Only a member of ${unit}, through a carriage they allow, can do this.`), 403);
     }
-    if (!(await standing(db, identity, id.data)).levels.some((l) => l.level === level)) {
+    if (level && !(await standing(db, identity, id.data)).levels.some((l) => l.level === level)) {
       return c.json(error('not_allowed', `This needs a member of ${unit} at ${level} or above.`), 403);
     }
-    return id.data;
+    return { id: id.data, carriage };
   };
 
   // A unit's own challenge, proposed by one of its Fruit members. It is a draft until a Seedkeeper puts it live.
@@ -159,11 +176,13 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const { proposedBy, ...quest } = raw;
     // Fruit proposes a challenge; only a Seedkeeper sets the unit's missions (design.md §5).
     const member = await unitMember(c, unit.data, proposedBy, quest.template === 'mission' ? 'Seedkeeper' : 'Fruit');
-    if (typeof member !== 'string') return member;
+    if (member instanceof Response) return member;
     if (typeof quest.id !== 'string' || !quest.id.startsWith(`${unit.data}.`)) {
       return c.json(error('invalid_quest', `A ${unit.data} quest's id starts with "${unit.data}.".`), 400);
     }
-    return draftAnswer(c, { ...quest, questLine: 'local', unit: unit.data }, member);
+    const res = await draftAnswer(c, { ...quest, questLine: 'local', unit: unit.data }, member.id);
+    if (res.status === 201 && quest.template !== 'mission') await note(member.id, 'suggestion.made', member.carriage);
+    return res;
   });
 
   // The unit's drafts waiting, for its Seedkeeper to decide.
@@ -171,8 +190,36 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     const unit = UNIT.safeParse(c.req.param('unitId'));
     if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
     const member = await unitMember(c, unit.data, c.req.query('by'), 'Seedkeeper');
-    if (typeof member !== 'string') return member;
+    if (member instanceof Response) return member;
     return c.json({ data: { unit: unit.data, drafts: await unitDrafts(db, unit.data) } });
+  });
+
+  // The unit's open suggestions, for any of its members: how many are in, never who (TRD §5).
+  app.get('/v1/units/:unitId/suggestions', async (c) => {
+    const unit = UNIT.safeParse(c.req.param('unitId'));
+    if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
+    const member = await unitMember(c, unit.data, c.req.query('by'), null);
+    if (member instanceof Response) return member;
+    return c.json({ data: { unit: unit.data, suggestions: await suggestions(db, unit.data, member.id) } });
+  });
+
+  // "I'm in" on a suggestion, or taking it back, by any member of the unit until it is approved.
+  app.post('/v1/units/:unitId/quests/:id/:step{in|out}', async (c) => {
+    const unit = UNIT.safeParse(c.req.param('unitId'));
+    if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
+    const body = await c.req.json().catch(() => null) as { by?: unknown } | null;
+    const member = await unitMember(c, unit.data, body?.by, null);
+    if (member instanceof Response) return member;
+    if ((await questUnit(db, c.req.param('id'))) !== unit.data) return c.json(error('unknown_quest', `No ${unit.data} quest with this id.`), 404);
+    const step = c.req.param('step') as 'in' | 'out';
+    const result = await setIn(db, c.req.param('id'), member.id, step);
+    if ('error' in result) {
+      if (result.error === 'unknown_quest') return c.json(error('unknown_quest', 'No quest with this id.'), 404);
+      if (result.error === 'own_suggestion') return c.json(error('own_suggestion', 'This is your own suggestion; other members tap "I\'m in".'), 409);
+      return c.json(error('not_open', 'This suggestion is no longer open: it is live or was declined.'), 409);
+    }
+    if (step === 'in') await note(member.id, 'suggestion.im_in', member.carriage);
+    return c.json({ data: result });
   });
 
   app.post('/v1/units/:unitId/quests/:id/:step{live|pause|end}', async (c) => {
@@ -180,9 +227,9 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     if (!unit.success) return c.json(error('invalid_unit', 'A unit id is lower-case letters, digits, - and _.'), 400);
     const body = await c.req.json().catch(() => null) as { by?: unknown } | null;
     const member = await unitMember(c, unit.data, body?.by, 'Seedkeeper');
-    if (typeof member !== 'string') return member;
+    if (member instanceof Response) return member;
     if ((await questUnit(db, c.req.param('id'))) !== unit.data) return c.json(error('unknown_quest', `No ${unit.data} quest with this id.`), 404);
-    return statusAnswer(c, await setStatus(db, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end'));
+    return changeStatus(c, c.req.param('id'), c.req.param('step') as 'live' | 'pause' | 'end');
   });
 
   app.get('/v1/people/:kiungoId/standing', async (c) => {

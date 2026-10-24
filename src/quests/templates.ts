@@ -88,6 +88,7 @@ export function compileQuest(d: QuestDraft): { version: QuestVersion } | { reaso
   const watched = 'watches' in d ? d.watches as string[] : 'steps' in d ? (d.steps as { kind: string }[]).map((s) => s.kind) : [];
   const unpaid = watched.find((k) => NEVER_EARNS.test(k));
   if (unpaid) return { reason: `${unpaid} never earns points: vouching, paying and buying are never rewarded.` };
+  if (watched.some((k) => k.startsWith('suggestion.'))) return { reason: 'Nobody earns for suggesting a quest or for "I\'m in".' };
   if (d.unit && d.questLine !== 'local') return { reason: 'A unit quest is a local quest (quest line local).' };
   if (d.questLine === 'local' || d.unit) {
     // activities.md rule 7: no single local activity worth more than 50 points

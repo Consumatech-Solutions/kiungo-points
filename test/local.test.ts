@@ -22,6 +22,13 @@ describe('T-09 local quests', () => {
   };
   const draft = (body: object) => t.call('POST', '/v1/units/matete/quests', body);
   const live = (by: string) => t.call('POST', '/v1/units/matete/quests/matete.peppers/live', { by });
+  // T-17: ten members tap "I'm in" on Zawadi's suggestion, so a Seedkeeper can put it live.
+  const allIn = async () => {
+    for (let i = 0; i < 10; i++) {
+      await t.person(`k-in${i}`, 'joined', 'Africa/Kinshasa', undefined, ['matete']);
+      await t.call('POST', '/v1/units/matete/quests/matete.peppers/in', { by: `k-in${i}` });
+    }
+  };
   const list = async (unit: string) => ((await t.call('GET', `/v1/units/${unit}/standing`)).json.data.quests as any[]).map((q) => q.quest);
 
   beforeEach(async () => {
@@ -37,6 +44,7 @@ describe('T-09 local quests', () => {
 
     expect((await live('k-zawadi')).status).toBe(403); // a Fruit member proposes; a Seedkeeper decides
     await grow('k-mzee', ['matete'], 'Seedkeeper');
+    await allIn();
     expect((await live('k-mzee')).status).toBe(200);
 
     expect(await list('matete')).toEqual(['matete.peppers']);
@@ -95,6 +103,7 @@ describe('T-09 local quests', () => {
   it('pays only Matete\'s members', async () => {
     await draft(peppers());
     await grow('k-mzee', ['matete'], 'Seedkeeper');
+    await allIn();
     await live('k-mzee');
     await t.person('k-amina', 'joined', 'Africa/Kinshasa', undefined, ['matete']);
     await t.person('k-kofi', 'joined', 'Africa/Kinshasa', undefined, ['kisenso']);
@@ -127,6 +136,7 @@ describe('T-09 local quests', () => {
     it('shows a new version beside the live one', async () => {
       await draft(peppers());
       await grow('k-mzee', ['matete'], 'Seedkeeper');
+      await allIn();
       await live('k-mzee');
       await draft({ ...peppers(), title: 'Grow more peppers' });
       const [d] = (await drafts('k-mzee')).json.data.drafts;
@@ -138,6 +148,7 @@ describe('T-09 local quests', () => {
     it('keeps who proposed a version once it is live', async () => {
       await draft(peppers());
       await grow('k-mzee', ['matete'], 'Seedkeeper');
+      await allIn();
       await live('k-mzee');
       await draft({ ...peppers(), title: 'Grow more peppers' });
       await live('k-mzee');

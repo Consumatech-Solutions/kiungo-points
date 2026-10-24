@@ -15,6 +15,7 @@ Nothing is deployed and nothing runs for real members. main is green: 174 tests 
 | T-20 | A first whose award is corrected is freed for the next member seen there; the member who lost it can't take it back | #39 |
 | T-21 | A rating comment read before its rating waits, and earns as soon as the rating earns | #40 |
 | T-19 | Each version of a unit's challenge records who proposed it; the Seedkeeper (or admin) lists the drafts waiting beside the live version | #41 |
+| T-17 | Members tap "I'm in" on a member's suggested challenge; at 10 a Seedkeeper (or the admin) can put it live, and the suggester earns `build.idea_taken_up` (50), once. Suggesting and "I'm in" earn nothing but are noted for spike flags | this PR (#31) |
 
 Each PR has a plan in `docs/plans/`, an Assumptions section and an independent QA review comment.
 
@@ -23,7 +24,6 @@ Each PR has a plan in `docs/plans/`, an Assumptions section and an independent Q
 | Issue | What | Status |
 |---|---|---|
 | #35 | T-18 photo proof for the tomato challenge, confirmed by another vouched member (who earns nothing) | Blocked: the carriages' confirmation flow has to be designed first |
-| #31 | T-17 members suggest quests (ticket has the core-rule checks) | Build only when the founder says go |
 | #13 | T-12 the real identity and activity rails; removes `src/standin/` | Blocked until those rails exist |
 | #14 | T-13 bring in kiungo.africa's first members | After T-12 and members' consent |
 
@@ -40,11 +40,11 @@ Each PR has a plan in `docs/plans/`, an Assumptions section and an independent Q
    Ask the founder before touching any live or staging database.
 2. **Blueprint follow-ups**, in kiungo-africa-site, `docs/gamification/engine/trd.md` §5. Don't edit that repository without asking.
    - Add `GET /v1/units/:unitId/drafts?by=` and `GET /v1/quests/drafts?unit=` (T-19).
-3. T-17 (#31) only on the founder's go.
+   - Add `POST /v1/units/:unitId/quests/:id/in|out` and `GET /v1/units/:unitId/suggestions?by=`, and the `needs_more_members` answer on both `live` routes (T-17).
 
 ## Founder steps after merging
 
-- Run the files in `migrations/` in order on the database (now up to `0014`). Then run `npm run load-quests` (README, `quests/README.md`). No database exists yet, so nothing is due now.
+- Run the files in `migrations/` in order on the database (now up to `0015`). Then run `npm run load-quests` (README, `quests/README.md`). No database exists yet, so nothing is due now.
 
 ## Founder decisions (all built)
 
@@ -81,6 +81,14 @@ Each PR has a plan in `docs/plans/`, an Assumptions section and an independent Q
 - Only the unit's Seedkeeper (or the admin) sees its drafts.
 - The admin's view is an admin-only route, and the admin can see a unit's drafts at any time.
 - Who put a version live isn't recorded.
+
+**T-17 (#31)** [INFERRED]
+- `MEMBERS_NEEDED` is a fixed 10; "a fifth of the unit" waits for the identity rail to count a unit's members (T-12).
+- A suggestion is a challenge whose first version a member proposed, while it is still a draft. Missions, admin-drafted challenges and new versions of a live one need nobody in and pay nobody.
+- The admin's `live` route holds suggestions to the same 10 and pays the same 50.
+- The suggester can't be in on their own suggestion; any member of the unit can, at any level.
+- Every successful `live` of a suggested challenge re-reads the one entry `kiungo-points:idea:<quest>`, so a payment lost to a crash is made on the next approval, and never twice.
+- Suggestions are listed by quest id (there is no drafted-at time to sort by).
 
 ## Notes for the next session
 

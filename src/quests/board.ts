@@ -77,15 +77,16 @@ type VersionView = {
   version: number; title: string; watches: string[]; target: number; period: string; limit: number | null; eachItem: string | null;
   points: number | null; steps: unknown; trustNeeded: string; evidence: string | null; after: string | null; proposedBy: string | null;
 };
-export type UnitDraft = { quest: string; template: string; status: string; live: VersionView | null; pending: VersionView[] };
+export type UnitDraft = { quest: string; template: string; status: string; in: number; live: VersionView | null; pending: VersionView[] };
 
 /**
  * A unit's challenges with versions waiting to be put live, oldest first, each beside the version live now
  * (null for a challenge never live), and who proposed each one.
  */
 export async function unitDrafts(db: Db, unit: string): Promise<UnitDraft[]> {
-  const rows = await db.query<VersionView & { quest: string; template: string; status: string; drafted: boolean }>(
+  const rows = await db.query<VersionView & { quest: string; template: string; status: string; in: number; drafted: boolean }>(
     `SELECT v.quest_id AS quest, q.template, q.status, v.valid_from IS NULL AS drafted,
+            (SELECT COUNT(*)::int FROM quest_backers b WHERE b.quest_id = q.id) AS "in",
             v.version, v.title, v.watches, v.target, v.period, v.period_limit AS "limit", v.each_item AS "eachItem", v.points,
             v.steps, v.trust_needed AS "trustNeeded", v.evidence, v.after_quest AS "after", v.proposed_by AS "proposedBy"
        FROM quest_versions v JOIN quests q ON q.id = v.quest_id
@@ -95,8 +96,8 @@ export async function unitDrafts(db: Db, unit: string): Promise<UnitDraft[]> {
     [unit],
   );
   const drafts: UnitDraft[] = [];
-  for (const { quest, template, status, drafted, ...version } of rows) {
-    if (drafts.at(-1)?.quest !== quest) drafts.push({ quest, template, status, live: null, pending: [] });
+  for (const { quest, template, status, in: n, drafted, ...version } of rows) {
+    if (drafts.at(-1)?.quest !== quest) drafts.push({ quest, template, status, in: n, live: null, pending: [] });
     const d = drafts.at(-1)!;
     if (drafted) d.pending.push(version);
     else d.live = version; // versions come in order, so the last one in force is the live one
@@ -120,6 +121,53 @@ export async function followable(db: Db, id: string): Promise<string | null> {
   return null;
 }
 
+/** How many of the unit's members must tap "I'm in" before a member's suggested challenge can go live. */
+export const MEMBERS_NEEDED = 10; // shortcut: a fixed 10 the founder set; "a fifth of the unit" needs the identity rail to count a unit's members (T-12).
+
+// The member who suggested a challenge (its first version's proposer), or null for a mission or an admin's draft.
+async function suggester(tx: Db, id: string, template: string): Promise<string | null> {
+  if (template === 'mission') return null;
+  const [v] = await tx.query<{ proposed_by: string | null }>('SELECT proposed_by FROM quest_versions WHERE quest_id = $1 AND version = 1', [id]);
+  return v?.proposed_by ?? null;
+}
+
+const backers = async (tx: Db, id: string) =>
+  (await tx.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM quest_backers WHERE quest_id = $1', [id]))[0]!.n;
+
+/**
+ * A member taps "I'm in" on a suggested challenge, or takes it back. Open only while the suggestion is a draft;
+ * the suggester can't back their own. Returns how many are in, never who.
+ */
+export async function setIn(db: Db, quest: string, kiungoId: string, step: 'in' | 'out') {
+  return db.tx(async (tx) => {
+    // The same lock as setStatus, so a withdrawal can't race an approval.
+    const [q] = await tx.query<{ status: string; template: string }>('SELECT status, template FROM quests WHERE id = $1 FOR UPDATE', [quest]);
+    if (!q) return { error: 'unknown_quest' as const };
+    const by = await suggester(tx, quest, q.template);
+    if (q.status !== 'draft' || !by) return { error: 'not_open' as const };
+    if (by === kiungoId) return { error: 'own_suggestion' as const };
+    await tx.query(step === 'in'
+      ? 'INSERT INTO quest_backers (quest_id, kiungo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING'
+      : 'DELETE FROM quest_backers WHERE quest_id = $1 AND kiungo_id = $2', [quest, kiungoId]);
+    return { quest, in: await backers(tx, quest), needed: MEMBERS_NEEDED };
+  });
+}
+
+/** A unit's open suggestions (members' challenges not yet live), oldest first, with how many are in and whether this member is. */
+export async function suggestions(db: Db, unit: string, kiungoId: string) {
+  const rows = await db.query<{ quest: string; title: string; template: string; steps: unknown; watches: string[]; points: number | null; in: number; youAreIn: boolean }>(
+    `SELECT DISTINCT ON (q.id) q.id AS quest, v.title, q.template, v.steps, v.watches, v.points,
+            (SELECT COUNT(*)::int FROM quest_backers b WHERE b.quest_id = q.id) AS "in",
+            EXISTS (SELECT 1 FROM quest_backers b WHERE b.quest_id = q.id AND b.kiungo_id = $2) AS "youAreIn"
+       FROM quests q JOIN quest_versions v ON v.quest_id = q.id
+      WHERE q.unit = $1 AND q.status = 'draft' AND q.template <> 'mission'
+        AND EXISTS (SELECT 1 FROM quest_versions f WHERE f.quest_id = q.id AND f.version = 1 AND f.proposed_by IS NOT NULL)
+      ORDER BY q.id, v.version DESC`,
+    [unit, kiungoId],
+  );
+  return rows.map((r) => ({ ...r, needed: MEMBERS_NEEDED }));
+}
+
 /** The unit a quest belongs to (null for a core quest), or undefined if there is no such quest. */
 export async function questUnit(db: Db, id: string): Promise<string | null | undefined> {
   const [q] = await db.query<{ unit: string | null }>('SELECT unit FROM quests WHERE id = $1', [id]);
@@ -128,17 +176,23 @@ export async function questUnit(db: Db, id: string): Promise<string | null | und
 
 /**
  * Puts a quest live, pauses it or ends it. Putting live (or resuming a paused quest) also puts
- * every drafted version in force from now. Ending is for good.
+ * every drafted version in force from now. Ending is for good. A member's suggestion goes live only once
+ * MEMBERS_NEEDED are in; putting one live returns its suggester (suggestedBy), to be paid.
  */
 export async function setStatus(db: Db, id: string, step: keyof typeof NEXT) {
   return db.tx(async (tx) => {
     const [q] = await tx.query<{ status: string; template: string }>('SELECT status, template FROM quests WHERE id = $1 FOR UPDATE', [id]);
     if (!q) return { error: 'unknown_quest' as const };
     if (!NEXT[step].from.includes(q.status)) return { error: q.status === 'ended' ? 'quest_ended' as const : 'not_allowed' as const };
+    const suggestedBy = step === 'live' ? await suggester(tx, id, q.template) : null;
+    if (suggestedBy && q.status === 'draft') {
+      const n = await backers(tx, id);
+      if (n < MEMBERS_NEEDED) return { error: 'needs_more_members' as const, in: n, needed: MEMBERS_NEEDED };
+    }
     if (step === 'live') {
       await tx.query('UPDATE quest_versions SET valid_from = now() WHERE quest_id = $1 AND valid_from IS NULL', [id]);
     }
     await tx.query('UPDATE quests SET status = $2 WHERE id = $1', [id, NEXT[step].to]);
-    return { quest: id, status: NEXT[step].to };
+    return { quest: id, status: NEXT[step].to, suggestedBy };
   });
 }
