@@ -36,7 +36,7 @@ export type Correction = { line: Line } | { error: 'unknown_award' | 'already_co
 
 /**
  * Cancels an award with a new, opposite one that says why (ADR-004). An award is cancelled at most once;
- * a correction, or a line that paid nothing, can't be corrected.
+ * a correction, or a line that paid nothing, can't be corrected. Correcting a first's award frees that first.
  */
 export async function correct(db: Db, awardId: number, reason: string): Promise<Correction> {
   return db.tx(async (tx) => {

@@ -98,6 +98,16 @@ describe('T-10 marks', () => {
       expect(firstGH(await t.act('k-kofi', 'picture.look', AT, 'k-look'))).toEqual([{ quest: 'first.country', points: 25, step: 'GH' }]);
       expect(await marks('k-kofi')).toContain('first_in_country:GH');
       expect(await marks('k-amina')).not.toContain('first_in_country:GH');
+      expect(await marks('k-amina')).toContain('founding_member');
+    });
+
+    it('frees a language first the same way', async () => {
+      for (const id of ['k-lena', 'k-moise']) await join(id, '2027-01-15T08:00:00Z', { languages: ['ln'] });
+      await t.act('k-lena', 'picture.look', AT, 'l-look');
+      await correctLatest('k-lena', 'first.language');
+      const res = await t.act('k-moise', 'picture.look', AT, 'mo-look');
+      expect(res.awards.filter((a: any) => a.quest === 'first.language')).toEqual([{ quest: 'first.language', points: 25, step: 'ln' }]);
+      expect(await marks('k-lena')).not.toContain('first_in_language:ln');
     });
 
     it('never gives a corrected member back the first they lost', async () => {
