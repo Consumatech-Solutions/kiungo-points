@@ -7,6 +7,9 @@ export interface Person {
   trust: Trust;
   timezone: string;
   units: string[]; // the community units they belong to
+  joinedAt: string;
+  country: string | null; // ISO 3166 code, such as CD
+  languages: string[]; // language codes, such as ln
 }
 
 /** Identity plug: who a Kiungo ID is, and what they allow. */

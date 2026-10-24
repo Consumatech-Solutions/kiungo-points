@@ -23,3 +23,4 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Evidence** | What a quest needs to see before it pays, such as a sale code. A reference, never the thing itself | proof of purchase |
 | **Never earns** | Vouching, paying money and buying anything: never paid, whatever quests exist. Carriages name these kinds `vouch.…`, `payment.…`, `purchase.…` | |
 | **Reader** | A carriage (or Kiungo's points system itself, `kiungo-points`) that a member allows to read something of theirs | client, consumer |
+| **Mark** | A lasting recognition: Founding member (joined before 1 January 2030), or first in a unit, country or language | badge, achievement |

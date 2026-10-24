@@ -75,7 +75,7 @@ describe('T-02 the quest board and templates', () => {
   it('lists every core quest with the points, limits and trust levels from activities.md', async () => {
     const live = await board();
     const shown = live
-      .filter((q) => q.template !== 'streak') // activities.md §8b; checked in the next test
+      .filter((q) => q.template !== 'streak' && q.questLine !== 'firsts') // §8b and §9; checked below
       .map((q) => [q.quest, q.points, q.period, q.limit, q.eachItem, q.trustNeeded]);
     expect(shown).toEqual(expect.arrayContaining(CORE));
     expect(shown).toHaveLength(CORE.length);
@@ -86,6 +86,11 @@ describe('T-02 the quest board and templates', () => {
       template: 'streak', questLine: 'needs', trustNeeded: 'joined',
       steps: [{ weeks: 4, points: 20 }, { weeks: 12, points: 50 }, { weeks: 26, points: 100 }],
     });
+  });
+
+  it('lists the firsts from activities.md §9, 25 points each', async () => {
+    const firsts = (await board()).filter((q) => q.questLine === 'firsts');
+    expect(firsts.map((q) => [q.quest, q.points])).toEqual([['first.country', 25], ['first.language', 25], ['first.unit', 25]]);
   });
 
   it('counts the picture as complete when all twelve sections are answered', async () => {

@@ -1,6 +1,7 @@
 import type { Db } from '../db';
 import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Trust } from '../plugs';
 import { periodKey, periodOrdinal, type Period } from './periods';
+import { giveMarks } from './marks';
 import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rules';
 
 export { NEVER_EARNS }; // the Quests board refuses to draft quests for these
@@ -137,6 +138,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         await notPaid(q, d.reason);
       }
     }
+    result.awards.push(...(await giveMarks(tx, person, entry.entryId, entry.occurredAt)));
     return result;
   });
 }

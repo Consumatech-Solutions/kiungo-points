@@ -1,5 +1,6 @@
 import type { Db } from '../db';
 import { TRUST_ORDER, type IdentityPlug, type Trust } from '../plugs';
+import { marksOf } from './marks';
 import { readStreak } from './rules';
 
 /** The levels and what each needs beyond its points (activities.md, design.md §5). */
@@ -19,6 +20,7 @@ export interface Standing {
   next: { level: string; pointsToGo: number; alsoNeeds: string[] } | null;
   levels: { level: string; reachedAt: string }[];
   bestStreak: number;
+  marks: { mark: string; givenAt: string }[];
 }
 
 /**
@@ -49,7 +51,8 @@ export async function standing(db: Db, identity: IdentityPlug, kiungoId: string)
   );
   const total = Number(sums!.total);
   const counting = countingPoints(Number(sums!.core), Number(sums!.invite), Number(sums!.local));
-  const trust = (await identity.lookup(kiungoId))?.trust ?? null;
+  const person = await identity.lookup(kiungoId);
+  const trust = person?.trust ?? null;
 
   const missing = (l: (typeof LEVELS)[number]) => [
     ...('trust' in l && (!trust || TRUST_ORDER.indexOf(trust) < TRUST_ORDER.indexOf(l.trust)) ? [l.trust] : []),
@@ -92,5 +95,6 @@ export async function standing(db: Db, identity: IdentityPlug, kiungoId: string)
       : null,
     levels,
     bestStreak,
+    marks: await marksOf(db, person, kiungoId),
   };
 }

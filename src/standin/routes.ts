@@ -29,14 +29,19 @@ export function standinRoutes(app: Hono, { db, identity, admin, carriageOf, now 
       timezone: z.string().refine(isValidTimezone, 'Use a time zone name such as Africa/Kinshasa.'),
       allows: z.array(z.union([CARRIAGE_NAME, z.literal('kiungo-points')])).default([]),
       units: z.array(UNIT).default([]),
+      joinedAt: z.string().datetime({ offset: true }).optional(),
+      country: z.string().regex(/^[A-Z]{2}$/).optional(),
+      languages: z.array(z.string().regex(/^[a-z]{2,3}$/)).default([]),
     }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json(error('invalid_request', body.error.message), 400);
     const p = body.data;
     await db.tx(async (tx) => {
       await tx.query(
-        `INSERT INTO standin_people (kiungo_id, trust, timezone, units) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (kiungo_id) DO UPDATE SET trust = EXCLUDED.trust, timezone = EXCLUDED.timezone, units = EXCLUDED.units`,
-        [p.kiungoId, p.trust, p.timezone, p.units],
+        `INSERT INTO standin_people (kiungo_id, trust, timezone, units, joined_at, country, languages)
+         VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()), $6, $7)
+         ON CONFLICT (kiungo_id) DO UPDATE SET trust = EXCLUDED.trust, timezone = EXCLUDED.timezone, units = EXCLUDED.units,
+           joined_at = COALESCE($5::timestamptz, standin_people.joined_at), country = EXCLUDED.country, languages = EXCLUDED.languages`,
+        [p.kiungoId, p.trust, p.timezone, p.units, p.joinedAt ?? null, p.country ?? null, p.languages],
       );
       await tx.query('DELETE FROM standin_permissions WHERE kiungo_id = $1', [p.kiungoId]);
       for (const reader of p.allows) {
