@@ -1,6 +1,7 @@
 // The quest board as files (quests/*.json): every change to a quest is a reviewed, dated pull request (T-14).
 import { z } from 'zod';
 import type { Db } from '../db';
+import { followable } from './board';
 import { compileQuest, MONEY_WORDS, QuestDraft, type QuestVersion } from './templates';
 
 const Version = z.object({
@@ -135,6 +136,13 @@ export async function loadQuests(db: Db, files: QuestFile[]): Promise<string[]> 
             v.steps === null ? null : JSON.stringify(v.steps), v.trustNeeded, v.evidence, v.validFrom, v.after ?? null],
         );
         changed.push(`${f.id} v${v.version} added, in force from ${v.validFrom}`);
+      }
+    }
+    // Checked once every file is in, so a quest may follow one that comes after it in the alphabet.
+    for (const f of files) {
+      for (const v of f.versions) {
+        const reason = v.after ? await followable(tx, v.after) : null;
+        if (reason) throw new Error(`${f.id} v${v.version}: ${reason}`);
       }
     }
     return changed;

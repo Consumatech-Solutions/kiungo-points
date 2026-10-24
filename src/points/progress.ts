@@ -69,9 +69,9 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
     const missingItem = entry.item === undefined && quests.some((q) => q.each_item);
 
     const write = (q: LiveQuest, points: number, step: string | null, reason: string | null) => tx.query(
-      `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step, reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [entry.entryId, entry.kiungoId, q.quest_id, q.version, points, q.quest_line, step, reason],
+      `INSERT INTO awards (entry_id, kiungo_id, quest_id, quest_version, points, quest_line, step, reason, item)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [entry.entryId, entry.kiungoId, q.quest_id, q.version, points, q.quest_line, step, reason, entry.item ?? null],
     );
     const notPaid = async (q: LiveQuest, reason: string) => {
       await write(q, 0, null, reason); // kept, so a redelivered entry gets the same answer
@@ -120,9 +120,10 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
         [entry.kiungoId, q.quest_id, key, entry.item],
       )).length > 0;
 
-      // The quest it follows has paid for this item (items paid are kept in that quest's progress).
+      // The quest it follows has paid this member for this item, and that award hasn't been corrected away.
       const afterPaid = q.after_quest !== null && entry.item !== undefined && (await tx.query(
-        'SELECT 1 FROM quest_progress WHERE kiungo_id = $1 AND quest_id = $2 AND $3 = ANY(counted)',
+        `SELECT 1 FROM awards a WHERE a.kiungo_id = $1 AND a.quest_id = $2 AND a.item = $3 AND a.points > 0
+            AND NOT EXISTS (SELECT 1 FROM awards c WHERE c.corrects = a.id)`,
         [entry.kiungoId, q.after_quest, entry.item],
       )).length > 0;
       const d = decide(

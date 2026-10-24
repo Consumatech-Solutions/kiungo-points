@@ -25,3 +25,4 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Reader** | A carriage (or Kiungo's points system itself, `kiungo-points`) that a member allows to read something of theirs | client, consumer |
 | **Mark** | A lasting recognition: Founding member (joined before 1 January 2030), or first in a unit, country or language | badge, achievement |
 | **Flag** | A note that a pattern looks unusual, for a person to review. Never a penalty | strike, ban |
+| **Follows** | A quest that pays for an item only once another quest has paid the member for the same item (`after`); until then, `needs_earlier_quest` | depends on |

@@ -45,6 +45,10 @@ export async function draftQuest(db: Db, d: QuestDraft): Promise<DraftResult> {
   if ('reason' in compiled) return compiled;
   const v = compiled.version;
   return db.tx(async (tx) => {
+    if (v.after_quest) {
+      const reason = await followable(tx, v.after_quest);
+      if (reason) return { reason };
+    }
     const [q] = await tx.query<{ status: string; template: string; quest_line: string; building: boolean; unit: string | null }>(
       `INSERT INTO quests (id, quest_line, status, template, building, unit) VALUES ($1, $2, 'draft', $3, $4, $5)
        ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id RETURNING status, template, quest_line, building, unit`,
@@ -71,6 +75,16 @@ const NEXT: Record<'live' | 'pause' | 'end', { to: string; from: string[] }> = {
   pause: { to: 'paused', from: ['live'] },
   end: { to: 'ended', from: ['draft', 'live', 'paused'] },
 };
+
+/** Why a quest can't be followed (it doesn't exist, or isn't paid once per item), or null if it can. */
+export async function followable(db: Db, id: string): Promise<string | null> {
+  const [v] = await db.query<{ each_item: string | null }>(
+    'SELECT each_item FROM quest_versions WHERE quest_id = $1 AND valid_from IS NOT NULL ORDER BY version DESC LIMIT 1', [id],
+  );
+  if (!v) return `There is no quest ${id} to follow.`;
+  if (!v.each_item) return `${id} isn't paid once per item, so a quest can't follow it.`;
+  return null;
+}
 
 /** The unit a quest belongs to (null for a core quest), or undefined if there is no such quest. */
 export async function questUnit(db: Db, id: string): Promise<string | null | undefined> {
