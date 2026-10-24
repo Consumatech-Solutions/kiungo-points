@@ -57,7 +57,7 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     return c.json({ data });
   };
   // Both live routes: once a member's suggestion is live, its suggester earns "An idea of yours is taken up".
-  // One entry id per quest, so approving again re-reads it and pays at most once.
+  // If paying fails after the quest is live, approving again re-reads the same entry id, so it pays at most once.
   const changeStatus = async (c: Context, id: string, step: 'live' | 'pause' | 'end') => {
     const result = await setStatus(db, id, step);
     if (!('error' in result) && result.suggestedBy) {
@@ -68,9 +68,11 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
     }
     return statusAnswer(c, result);
   };
-  // Suggesting and "I'm in" earn nothing, but are noted so spike flags can watch them.
-  const note = (kiungoId: string, kind: string, carriage: string) =>
-    noteEntry(db, { entryId: `kiungo-points:${crypto.randomUUID()}`, kiungoId, kind, occurredAt: now().toISOString(), carriage });
+  // Suggesting and "I'm in" earn nothing, but are noted so spike flags can watch them; nothing is read without permission.
+  const note = async (kiungoId: string, kind: string, carriage: string) => {
+    if (!(await identity.allows(kiungoId, READER))) return;
+    await noteEntry(db, { entryId: `kiungo-points:${crypto.randomUUID()}`, kiungoId, kind, occurredAt: now().toISOString(), carriage });
+  };
   const draftAnswer = async (c: Context, raw: unknown, proposedBy: string | null = null) => {
     const body = QuestDraft.safeParse(raw);
     if (!body.success) return c.json(error('invalid_quest', body.error.issues.map((i) => `${i.path.join('.') || 'quest'}: ${i.message}`).join(' ')), 400);

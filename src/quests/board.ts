@@ -69,6 +69,8 @@ export async function draftQuest(db: Db, d: QuestDraft, proposedBy: string | nul
       [d.id, d.title, v.watches, v.target, v.period, v.period_limit, v.each_item, v.points,
         v.steps === null ? null : JSON.stringify(v.steps), d.trustNeeded, d.evidence ?? null, v.after_quest, proposedBy],
     );
+    // Members backed the suggestion they saw, so a new version starts its "I'm in" list again (under the row lock taken above).
+    if (q!.status === 'draft') await tx.query('DELETE FROM quest_backers WHERE quest_id = $1', [d.id]);
     return { quest: d.id, version: row!.version, status: q!.status };
   });
 }
@@ -153,7 +155,7 @@ export async function setIn(db: Db, quest: string, kiungoId: string, step: 'in' 
   });
 }
 
-/** A unit's open suggestions (members' challenges not yet live), oldest first, with how many are in and whether this member is. */
+/** A unit's open suggestions (members' challenges not yet live), by quest id, with how many are in and whether this member is. */
 export async function suggestions(db: Db, unit: string, kiungoId: string) {
   const rows = await db.query<{ quest: string; title: string; template: string; steps: unknown; watches: string[]; points: number | null; in: number; youAreIn: boolean }>(
     `SELECT DISTINCT ON (q.id) q.id AS quest, v.title, q.template, v.steps, v.watches, v.points,

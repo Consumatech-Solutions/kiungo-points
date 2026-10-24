@@ -130,6 +130,25 @@ describe('T-17 members suggest quests', () => {
     expect((await t.call('GET', '/v1/people/k-m0/standing')).json.data.total).toBe(0);
   });
 
+  it("counts a member who hasn't allowed the points system, but notes nothing about them", async () => {
+    await t.person('k-private', 'joined', 'Africa/Kinshasa', ['kiungo.test'], ['matete']);
+    await t.call('PUT', '/v1/admin/spike-settings', [{ kind: 'suggestion.im_in', count: 2, minutes: 60 }], ADMIN);
+    for (const step of ['in', 'out', 'in', 'out', 'in'] as const) expect((await tap('k-private', step)).status).toBe(200);
+    expect((await tap('k-m0')).json.data.in).toBe(2);
+    const flags = (await t.call('GET', '/v1/admin/flags', undefined, ADMIN)).json.data as any[];
+    expect(flags.filter((f) => f.kiungoId === 'k-private')).toEqual([]);
+  });
+
+  it('starts the "I\'m in" list again when the suggestion changes', async () => {
+    for (const id of MEMBERS) await tap(id);
+    expect((await t.call('POST', '/v1/units/matete/quests', { ...peppers, title: 'Grow hot peppers' })).status).toBe(201);
+    const [s] = (await t.call('GET', '/v1/units/matete/suggestions?by=k-m0')).json.data.suggestions;
+    expect(s).toMatchObject({ quest: 'matete.peppers', title: 'Grow hot peppers', in: 0, youAreIn: false });
+    const res = await live();
+    expect(res.status).toBe(409);
+    expect(res.json.error.code).toBe('needs_more_members');
+  });
+
   it('refuses a quest that pays for suggesting', async () => {
     const res = await t.call('POST', '/v1/quests', {
       id: 'local.backing', title: 'Back a suggestion', questLine: 'local', template: 'repeat', watches: ['suggestion.im_in'],

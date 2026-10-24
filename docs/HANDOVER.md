@@ -89,6 +89,8 @@ Each PR has a plan in `docs/plans/`, an Assumptions section and an independent Q
 - The suggester can't be in on their own suggestion; any member of the unit can, at any level.
 - Every successful `live` of a suggested challenge re-reads the one entry `kiungo-points:idea:<quest>`, so a payment lost to a crash is made on the next approval, and never twice.
 - Suggestions are listed by quest id (there is no drafted-at time to sort by).
+- A new version of an open suggestion clears its "I'm in" list: members backed what they saw.
+- "I'm in" from a member who hasn't allowed the points system counts, but no entry is noted for them (so no spike flag).
 
 ## Notes for the next session
 
