@@ -5,6 +5,7 @@ import type { IdentityPlug } from './plugs';
 import { allAwards, correct, history } from './points/history';
 import { periodKey, type Period } from './points/periods';
 import { earned, questProgress } from './points/progress';
+import { flags, reviewFlag, setSpikeSettings, spikeSettings } from './points/spikes';
 import { standing } from './points/standing';
 import { draftQuest, liveQuests, questUnit, setStatus, unitStanding } from './quests/board';
 import { QuestDraft } from './quests/templates';
@@ -200,6 +201,45 @@ export function createApp({ db, identity, adminKey, limit, now = () => new Date(
       standing: await standing(db, identity, m.id),
       awards: await allAwards(db, m.id),
     } });
+  });
+
+  // Spike settings and flags: private, admin only (TRD §7). A flag is for a person to look at, never a penalty.
+  app.put('/v1/admin/spike-settings', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    const body = z.array(z.object({
+      kind: z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/).max(64),
+      count: z.number().int().min(2).max(10000),
+      minutes: z.number().int().min(1).max(10080),
+    }).strict()).max(100).refine((xs) => new Set(xs.map((x) => x.kind)).size === xs.length, 'Each kind once.')
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json(error('invalid_request', 'Send a list of { kind, count (2 or more), minutes (1 to 10080) }, each kind once.'), 400);
+    await setSpikeSettings(db, body.data);
+    return c.json({ data: body.data });
+  });
+
+  app.get('/v1/admin/spike-settings', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    return c.json({ data: await spikeSettings(db) });
+  });
+
+  app.get('/v1/admin/flags', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    return c.json({ data: await flags(db, c.req.query('open') === 'true') });
+  });
+
+  app.post('/v1/admin/flags/:id/review', async (c) => {
+    const ok = await admin(c);
+    if (ok !== true) return ok;
+    const id = z.coerce.number().int().positive().safeParse(c.req.param('id'));
+    const body = z.object({ note: z.string().trim().min(1).max(500) }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!id.success || !body.success) return c.json(error('invalid_request', 'Say what you found, in a note.'), 400);
+    const result = await reviewFlag(db, id.data, body.data.note);
+    if (result === 'unknown') return c.json(error('unknown_flag', 'No flag with this id.'), 404);
+    if (result === 'already_reviewed') return c.json(error('already_reviewed', 'This flag has already been reviewed.'), 409);
+    return c.json({ data: { id: id.data, reviewed: true } });
   });
 
   app.post('/v1/corrections', async (c) => {

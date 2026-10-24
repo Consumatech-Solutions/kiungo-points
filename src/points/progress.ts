@@ -2,6 +2,7 @@ import type { Db } from '../db';
 import { READER, TRUST_ORDER, type ActivityEntry, type IdentityPlug, type Trust } from '../plugs';
 import { periodKey, periodOrdinal, type Period } from './periods';
 import { giveMarks } from './marks';
+import { checkSpike } from './spikes';
 import { decide, NEVER_EARNS, readStreak, type Progress, type Rule } from './rules';
 
 export { NEVER_EARNS }; // the Quests board refuses to draft quests for these
@@ -44,6 +45,7 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
       [entry.entryId, entry.kiungoId, entry.kind, entry.occurredAt, entry.carriage],
     );
     if (fresh.length === 0) return earned(tx, entry.entryId); // already read: same answer again
+    await checkSpike(tx, entry); // every kind, never-earns included: repeated vouching is a pattern to look at
 
     if (NEVER_EARNS.test(entry.kind)) {
       await tx.query("UPDATE entries_read SET outcome = 'never_earns' WHERE entry_id = $1", [entry.entryId]);

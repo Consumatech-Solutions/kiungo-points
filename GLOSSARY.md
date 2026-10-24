@@ -24,3 +24,4 @@ Words used in this project's names, code and API. Use them; avoid the words in t
 | **Never earns** | Vouching, paying money and buying anything: never paid, whatever quests exist. Carriages name these kinds `vouch.…`, `payment.…`, `purchase.…` | |
 | **Reader** | A carriage (or Kiungo's points system itself, `kiungo-points`) that a member allows to read something of theirs | client, consumer |
 | **Mark** | A lasting recognition: Founding member (joined before 1 January 2030), or first in a unit, country or language | badge, achievement |
+| **Flag** | A note that a pattern looks unusual, for a person to review. Never a penalty | strike, ban |
