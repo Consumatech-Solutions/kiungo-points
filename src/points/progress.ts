@@ -62,6 +62,18 @@ export async function takeEntry(db: Db, identity: IdentityPlug, entry: ActivityE
   });
 }
 
+/** Records an entry that earns nothing (suggesting, "I'm in"), so spike flags can see it. No quests, no marks. */
+export async function noteEntry(db: Db, entry: ActivityEntry): Promise<void> {
+  await db.tx(async (tx) => {
+    const fresh = await tx.query(
+      `INSERT INTO entries_read (entry_id, kiungo_id, kind, occurred_at, carriage, outcome)
+       VALUES ($1, $2, $3, $4, $5, 'earns_nothing') ON CONFLICT (entry_id) DO NOTHING RETURNING entry_id`,
+      [entry.entryId, entry.kiungoId, entry.kind, entry.occurredAt, entry.carriage],
+    );
+    if (fresh.length) await checkSpike(tx, entry);
+  });
+}
+
 // The version of each live quest in force when the entry happened, then only those that watch its kind.
 async function questsInForce(tx: Db, occurredAt: string, kind: string): Promise<LiveQuest[]> {
   return tx.query<LiveQuest>(
